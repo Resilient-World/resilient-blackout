@@ -62,6 +62,10 @@ from resilient_blackout.grid.btm_optimization import (
 from resilient_blackout.grid.cascade import CascadingSimulator
 from resilient_blackout.grid.cem_monte_carlo import CEMMonteCarloSimulator
 from resilient_blackout.grid.der_storage import OptimalIslandDispatch
+from resilient_blackout.grid.distribution_metrics import (
+    IEEEMetricCalculator,
+    MicrogridIslandEvaluator,
+)
 from resilient_blackout.grid.emissions import CarbonEmissionsTracker
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
@@ -101,6 +105,7 @@ __all__ = [
     "GridSectionalizer",
     "GridSensitivityAnalyzer",
     "GridSurrogateNet",
+    "IEEEMetricCalculator",
     "HazardEvent",
     "ImpactEngine",
     "ImpactFunction",
@@ -109,6 +114,7 @@ __all__ = [
     "LowRankFlowEngine",
     "MakkonenIcer",
     "MultiCriteriaDecisionSolver",
+    "MicrogridIslandEvaluator",
     "MultiCrewRestorationRouter",
     "OperatorResponseModule",
     "OptimalIslandDispatch",
