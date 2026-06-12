@@ -50,6 +50,7 @@ from resilient_blackout.economics.voll_dynamic import DynamicVoLLCalculator
 from resilient_blackout.grid.cascade import CascadingSimulator
 from resilient_blackout.grid.cem_monte_carlo import CEMMonteCarloSimulator
 from resilient_blackout.grid.der_storage import OptimalIslandDispatch
+from resilient_blackout.grid.emissions import CarbonEmissionsTracker
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
 from resilient_blackout.grid.protection import (
@@ -68,6 +69,7 @@ __all__ = [
     "Asset",
     "AvoidedLossCalculator",
     "calculate_dynamic_ampacity",
+    "CarbonEmissionsTracker",
     "CascadingProtectionEngine",
     "CascadingSimulator",
     "CEMMonteCarloSimulator",
