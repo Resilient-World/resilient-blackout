@@ -35,6 +35,7 @@ accumulation for electrical grid infrastructure exposed to natural perils.
 
 from resilient_blackout.climate.compound import CompoundHazardEngine
 from resilient_blackout.climate.downscaling import QuantileDeltaMapper
+from resilient_blackout.climate.flooding import SubstationFlooder
 from resilient_blackout.climate.ice_accretion import MakkonenIcer
 from resilient_blackout.climate.storyline import ClimateStorylineAdjuster
 from resilient_blackout.climate.wildfire import WildfireRiskEngine
@@ -110,6 +111,7 @@ __all__ = [
     "RelayModel",
     "RiskScenario",
     "RRSReportGenerator",
+    "SubstationFlooder",
     "train_surrogate",
     "WildfireRiskEngine",
     "map_hazard_to_assets",
