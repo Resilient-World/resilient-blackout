@@ -50,6 +50,10 @@ import pandas as pd
 
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
+from resilient_blackout.grid.protection import (
+    CascadingProtectionEngine,
+    OperatorResponseModule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +93,11 @@ class CascadingSimulator:
     use_low_rank_screening : bool
     low_rank_screening_threshold : float
     low_rank_engine : LowRankFlowEngine or None
+    use_protection_relays : bool
+    enable_operator_response : bool
+    protection_engine : CascadingProtectionEngine or None
+    operator_module : OperatorResponseModule or None
+    cascade_elapsed_s : float
     """
 
     def __init__(
@@ -99,6 +108,10 @@ class CascadingSimulator:
         rng: Optional[np.random.Generator] = None,
         use_low_rank_screening: bool = False,
         low_rank_screening_threshold: float = 0.8,
+        use_protection_relays: bool = False,
+        enable_operator_response: bool = False,
+        protection_time_step_s: float = 1.0,
+        operator_intervention_window_s: float = 300.0,
     ) -> None:
         if tolerance_factor <= 1.0:
             raise ValueError(
@@ -118,6 +131,22 @@ class CascadingSimulator:
         self.low_rank_engine: Optional[LowRankFlowEngine] = None
         if use_low_rank_screening:
             self.low_rank_engine = LowRankFlowEngine(grid_model)
+
+        self.use_protection_relays: bool = use_protection_relays
+        self.enable_operator_response: bool = enable_operator_response
+        self.protection_engine: Optional[CascadingProtectionEngine] = None
+        self.operator_module: Optional[OperatorResponseModule] = None
+        self.cascade_elapsed_s: float = 0.0
+
+        if use_protection_relays:
+            self.protection_engine = CascadingProtectionEngine(
+                grid_model, time_step_s=protection_time_step_s
+            )
+            if enable_operator_response:
+                self.operator_module = OperatorResponseModule(
+                    grid_model,
+                    intervention_window_s=operator_intervention_window_s,
+                )
 
     # ------------------------------------------------------------------
     # Public API
@@ -162,6 +191,10 @@ class CascadingSimulator:
 
         tripped_lines: List[int] = []
         tripped_trafos: List[int] = []
+        self.cascade_elapsed_s = 0.0
+
+        if self.protection_engine is not None:
+            self.protection_engine.reset()
 
         # Step a: apply initial trips
         self._apply_initial_trips(net, mapping, initial_failed_assets)
@@ -192,10 +225,15 @@ class CascadingSimulator:
                     islands=islands,
                 )
 
-            # Step e: Bernoulli trials
-            new_line_trips, new_trafo_trips = self._trip_overloaded(
-                net, overloaded_lines, overloaded_trafos
-            )
+            # Step e: trip overloaded elements
+            if self.use_protection_relays and self.protection_engine is not None:
+                new_line_trips, new_trafo_trips = self._trip_via_protection(
+                    net, overloaded_lines, overloaded_trafos, iteration
+                )
+            else:
+                new_line_trips, new_trafo_trips = self._trip_overloaded(
+                    net, overloaded_lines, overloaded_trafos
+                )
 
             tripped_lines.extend(new_line_trips)
             tripped_trafos.extend(new_trafo_trips)
@@ -502,6 +540,77 @@ class CascadingSimulator:
                 )
 
         return tripped
+
+    # ------------------------------------------------------------------
+    # Protection-based tripping (IDMT relays + operator response)
+    # ------------------------------------------------------------------
+
+    def _trip_via_protection(
+        self,
+        net: Any,
+        overloaded_lines: List[int],
+        overloaded_trafos: List[int],
+        iteration: int,
+    ) -> Tuple[List[int], List[int]]:
+        """Trip overloaded elements using IDMT relay timers.
+
+        Accumulates trip timers for overloaded lines and optionally
+        triggers operator intervention when the cascade exceeds the
+        configured intervention window.
+
+        Parameters
+        ----------
+        net : pandapowerNet
+        overloaded_lines : list of int
+        overloaded_trafos : list of int
+        iteration : int
+            Current cascade iteration.
+
+        Returns
+        -------
+        tuple of (list of int, list of int)
+            Newly tripped line and transformer indices.
+        """
+        if self.protection_engine is None:
+            return [], []
+
+        self.cascade_elapsed_s += self.protection_engine.time_step_s
+
+        line_currents: Dict[int, float] = {}
+        if hasattr(net, "res_line"):
+            for lidx in overloaded_lines:
+                if lidx in net.res_line.index:
+                    i_ka = float(net.res_line.at[lidx, "i_ka"])
+                    line_currents[lidx] = i_ka * 1000.0
+
+        new_line_trips = self.protection_engine.step(
+            net, overloaded_lines, line_currents
+        )
+
+        if (
+            self.enable_operator_response
+            and self.operator_module is not None
+            and new_line_trips
+        ):
+            intervention = self.operator_module.attempt_intervention(
+                net,
+                self.cascade_elapsed_s,
+                overloaded_lines,
+                new_line_trips,
+            )
+            if intervention.get("stabilized"):
+                logger.info(
+                    "Operator intervention stabilized cascade at t=%.1f s",
+                    self.cascade_elapsed_s,
+                )
+
+        new_trafo_trips: List[int] = []
+        if overloaded_trafos and hasattr(net, "res_trafo"):
+            new_trafo_trips = self._trip_elements(
+                net, "trafo", overloaded_trafos, net.res_trafo.loading_percent
+            )
+
+        return new_line_trips, new_trafo_trips
 
     # ------------------------------------------------------------------
     # Step g: load shedding

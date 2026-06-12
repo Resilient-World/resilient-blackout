@@ -42,6 +42,11 @@ from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
 from resilient_blackout.grid.cascade import CascadingSimulator
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
+from resilient_blackout.grid.protection import (
+    CascadingProtectionEngine,
+    OperatorResponseModule,
+    RelayModel,
+)
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
 from resilient_blackout.utils.geo import map_hazard_to_assets
 
@@ -50,6 +55,7 @@ __all__ = [
     "Asset",
     "AvoidedLossCalculator",
     "calculate_dynamic_ampacity",
+    "CascadingProtectionEngine",
     "CascadingSimulator",
     "DLRGridController",
     "DynamicFragilityAdjuster",
@@ -59,7 +65,9 @@ __all__ = [
     "ImpactFunction",
     "ImpactFunctionSet",
     "LowRankFlowEngine",
+    "OperatorResponseModule",
     "QuantileDeltaMapper",
+    "RelayModel",
     "RiskScenario",
     "map_hazard_to_assets",
 ]
