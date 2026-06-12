@@ -40,6 +40,7 @@ from resilient_blackout.core.economics import AvoidedLossCalculator
 from resilient_blackout.core.engine import ImpactEngine
 from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
 from resilient_blackout.grid.cascade import CascadingSimulator
+from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
 from resilient_blackout.utils.geo import map_hazard_to_assets
@@ -57,6 +58,7 @@ __all__ = [
     "ImpactEngine",
     "ImpactFunction",
     "ImpactFunctionSet",
+    "LowRankFlowEngine",
     "QuantileDeltaMapper",
     "RiskScenario",
     "map_hazard_to_assets",
