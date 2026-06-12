@@ -27,32 +27,5 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """
-Resilient Blackout — Clean-room grid physical risk model.
-
-Provides geospatial hazard-to-asset impact evaluation and financial loss
-accumulation for electrical grid infrastructure exposed to natural perils.
+Climate data bias-correction and statistical downscaling.
 """
-
-from resilient_blackout.climate.downscaling import QuantileDeltaMapper
-from resilient_blackout.core.base import Asset, HazardEvent, RiskScenario
-from resilient_blackout.core.economics import AvoidedLossCalculator
-from resilient_blackout.core.engine import ImpactEngine
-from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
-from resilient_blackout.grid.cascade import CascadingSimulator
-from resilient_blackout.grid.network import GridModel
-from resilient_blackout.utils.geo import map_hazard_to_assets
-
-__all__ = [
-    "Asset",
-    "AvoidedLossCalculator",
-    "CascadingSimulator",
-    "GridModel",
-    "HazardEvent",
-    "ImpactEngine",
-    "ImpactFunction",
-    "ImpactFunctionSet",
-    "QuantileDeltaMapper",
-    "RiskScenario",
-    "map_hazard_to_assets",
-]
-__version__ = "0.1.0"
