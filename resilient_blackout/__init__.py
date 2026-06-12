@@ -60,6 +60,7 @@ from resilient_blackout.grid.protection import (
 )
 from resilient_blackout.grid.restoration import CrewRestorationRouter
 from resilient_blackout.grid.sectionalizing import GridSectionalizer
+from resilient_blackout.grid.thermal_dispatch import QSTSConfig, QSTSThermalDispatcher
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
 from resilient_blackout.ml.surrogate import GridSurrogateNet, predict_opf_states, train_surrogate
 from resilient_blackout.reporting.rrs_scorecard import RRSReportGenerator
@@ -93,6 +94,8 @@ __all__ = [
     "MultiCriteriaDecisionSolver",
     "OperatorResponseModule",
     "OptimalIslandDispatch",
+    "QSTSConfig",
+    "QSTSThermalDispatcher",
     "predict_opf_states",
     "QuantileDeltaMapper",
     "RelayModel",
