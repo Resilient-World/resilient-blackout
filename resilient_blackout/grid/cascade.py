@@ -48,6 +48,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 import numpy as np
 import pandas as pd
 
+from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,9 @@ class CascadingSimulator:
     tolerance_factor : float
     max_iterations : int
     rng : numpy.random.Generator
+    use_low_rank_screening : bool
+    low_rank_screening_threshold : float
+    low_rank_engine : LowRankFlowEngine or None
     """
 
     def __init__(
@@ -93,6 +97,8 @@ class CascadingSimulator:
         tolerance_factor: float = 1.2,
         max_iterations: int = 50,
         rng: Optional[np.random.Generator] = None,
+        use_low_rank_screening: bool = False,
+        low_rank_screening_threshold: float = 0.8,
     ) -> None:
         if tolerance_factor <= 1.0:
             raise ValueError(
@@ -107,6 +113,11 @@ class CascadingSimulator:
         self.tolerance_factor: float = tolerance_factor
         self.max_iterations: int = max_iterations
         self.rng: np.random.Generator = rng or np.random.default_rng()
+        self.use_low_rank_screening: bool = use_low_rank_screening
+        self.low_rank_screening_threshold: float = low_rank_screening_threshold
+        self.low_rank_engine: Optional[LowRankFlowEngine] = None
+        if use_low_rank_screening:
+            self.low_rank_engine = LowRankFlowEngine(grid_model)
 
     # ------------------------------------------------------------------
     # Public API
@@ -162,8 +173,13 @@ class CascadingSimulator:
             # Step c: solve power flow per island
             self._solve_islands(net, islands)
 
-            # Step d: scan overloads
+            # Step d: scan overloads (with optional low-rank pre-screening)
             overloaded_lines, overloaded_trafos = self._scan_overloads(net)
+
+            if self.use_low_rank_screening and self.low_rank_engine is not None:
+                overloaded_lines = self._apply_low_rank_screening(
+                    net, overloaded_lines, tripped_lines
+                )
 
             if not overloaded_lines and not overloaded_trafos:
                 # Cascade naturally terminated
@@ -329,6 +345,69 @@ class CascadingSimulator:
             overloaded_trafos = net.trafo.index[mask].tolist()
 
         return overloaded_lines, overloaded_trafos
+
+    # ------------------------------------------------------------------
+    # Low-rank pre-screening
+    # ------------------------------------------------------------------
+
+    def _apply_low_rank_screening(
+        self,
+        net: Any,
+        overloaded_lines: List[int],
+        tripped_lines: List[int],
+    ) -> List[int]:
+        """Use low-rank LODF to filter false-positive overloads.
+
+        When the low-rank engine is available, this method cross-checks
+        the AC/DC overload scan against the fast LODF-based estimate.
+        Lines that appear overloaded in AC/DC but not in the LODF
+        screening are removed (false positives from numerical noise).
+
+        Conversely, lines that the LODF screening flags but the AC/DC
+        scan missed are added (fast detection of emerging overloads).
+
+        Parameters
+        ----------
+        net : pandapowerNet
+        overloaded_lines : list of int
+            Lines flagged by the AC/DC power flow scan.
+        tripped_lines : list of int
+            Lines tripped in previous iterations.
+
+        Returns
+        -------
+        list of int
+            Refined list of overloaded line indices.
+        """
+        if self.low_rank_engine is None:
+            return overloaded_lines
+
+        active_flows = np.zeros(self.low_rank_engine.n_lines, dtype=np.float64)
+        if hasattr(net, "res_line") and len(net.res_line) > 0:
+            for lidx in range(len(net.res_line)):
+                if lidx in net.line.index and net.line.at[lidx, "in_service"]:
+                    active_flows[lidx] = float(net.res_line.at[lidx, "p_from_mw"])
+
+        candidates = self.low_rank_engine.screen_overloads(
+            active_flows,
+            tripped_lines,
+            threshold=self.low_rank_screening_threshold,
+        )
+
+        ac_set = set(overloaded_lines)
+        lr_set = set(candidates)
+
+        confirmed = ac_set & lr_set
+        missed = lr_set - ac_set
+
+        if missed:
+            logger.debug(
+                "Low-rank screening flagged %d additional lines: %s",
+                len(missed),
+                sorted(missed),
+            )
+
+        return sorted(confirmed | missed)
 
     # ------------------------------------------------------------------
     # Step e: Bernoulli trip trials
