@@ -35,6 +35,7 @@ accumulation for electrical grid infrastructure exposed to natural perils.
 
 from resilient_blackout.climate.downscaling import QuantileDeltaMapper
 from resilient_blackout.core.base import Asset, HazardEvent, RiskScenario
+from resilient_blackout.core.degradation import ArrheniusDegradationModel, DynamicFragilityAdjuster
 from resilient_blackout.core.economics import AvoidedLossCalculator
 from resilient_blackout.core.engine import ImpactEngine
 from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
@@ -43,9 +44,11 @@ from resilient_blackout.grid.network import GridModel
 from resilient_blackout.utils.geo import map_hazard_to_assets
 
 __all__ = [
+    "ArrheniusDegradationModel",
     "Asset",
     "AvoidedLossCalculator",
     "CascadingSimulator",
+    "DynamicFragilityAdjuster",
     "GridModel",
     "HazardEvent",
     "ImpactEngine",
