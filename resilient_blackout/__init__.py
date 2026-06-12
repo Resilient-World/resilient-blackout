@@ -45,6 +45,7 @@ from resilient_blackout.economics.mcda import (
 )
 from resilient_blackout.economics.sensitivity import GridSensitivityAnalyzer
 from resilient_blackout.grid.cascade import CascadingSimulator
+from resilient_blackout.grid.der_storage import OptimalIslandDispatch
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
 from resilient_blackout.grid.protection import (
@@ -76,6 +77,7 @@ __all__ = [
     "LowRankFlowEngine",
     "MultiCriteriaDecisionSolver",
     "OperatorResponseModule",
+    "OptimalIslandDispatch",
     "predict_opf_states",
     "QuantileDeltaMapper",
     "RelayModel",
