@@ -44,6 +44,9 @@ dev = [
 ml = [
     "torch>=2.0",
 ]
+sensitivity = [
+    "salib>=1.4",
+]
 
 [tool.setuptools.packages.find]
 include = ["resilient_blackout*"]
