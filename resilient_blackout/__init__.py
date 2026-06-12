@@ -44,6 +44,11 @@ from resilient_blackout.core.degradation import ArrheniusDegradationModel, Dynam
 from resilient_blackout.core.economics import AvoidedLossCalculator
 from resilient_blackout.core.engine import ImpactEngine
 from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
+from resilient_blackout.economics.investment_planner import (
+    ClimateScenario,
+    InvestmentPortfolioOptimizer,
+    ResilienceProject,
+)
 from resilient_blackout.economics.mcda import (
     EquityWeightedVoLLCalculator,
     MultiCriteriaDecisionSolver,
@@ -82,6 +87,7 @@ __all__ = [
     "CascadingProtectionEngine",
     "CascadingSimulator",
     "CEMMonteCarloSimulator",
+    "ClimateScenario",
     "ClimateStorylineAdjuster",
     "CompoundHazardEngine",
     "CrewRestorationRouter",
@@ -97,6 +103,7 @@ __all__ = [
     "ImpactEngine",
     "ImpactFunction",
     "ImpactFunctionSet",
+    "InvestmentPortfolioOptimizer",
     "LowRankFlowEngine",
     "MakkonenIcer",
     "MultiCriteriaDecisionSolver",
@@ -109,6 +116,7 @@ __all__ = [
     "predict_opf_states",
     "QuantileDeltaMapper",
     "RelayModel",
+    "ResilienceProject",
     "RiskScenario",
     "RRSReportGenerator",
     "SubstationFlooder",
