@@ -35,6 +35,7 @@ accumulation for electrical grid infrastructure exposed to natural perils.
 
 from resilient_blackout.climate.compound import CompoundHazardEngine
 from resilient_blackout.climate.downscaling import QuantileDeltaMapper
+from resilient_blackout.climate.storyline import ClimateStorylineAdjuster
 from resilient_blackout.core.base import Asset, HazardEvent, RiskScenario
 from resilient_blackout.core.degradation import ArrheniusDegradationModel, DynamicFragilityAdjuster
 from resilient_blackout.core.economics import AvoidedLossCalculator
@@ -69,6 +70,7 @@ __all__ = [
     "CascadingProtectionEngine",
     "CascadingSimulator",
     "CEMMonteCarloSimulator",
+    "ClimateStorylineAdjuster",
     "CompoundHazardEngine",
     "DLRGridController",
     "DynamicFragilityAdjuster",
