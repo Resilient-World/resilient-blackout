@@ -39,6 +39,10 @@ from resilient_blackout.core.degradation import ArrheniusDegradationModel, Dynam
 from resilient_blackout.core.economics import AvoidedLossCalculator
 from resilient_blackout.core.engine import ImpactEngine
 from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
+from resilient_blackout.economics.mcda import (
+    EquityWeightedVoLLCalculator,
+    MultiCriteriaDecisionSolver,
+)
 from resilient_blackout.economics.sensitivity import GridSensitivityAnalyzer
 from resilient_blackout.grid.cascade import CascadingSimulator
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
@@ -61,6 +65,7 @@ __all__ = [
     "CascadingSimulator",
     "DLRGridController",
     "DynamicFragilityAdjuster",
+    "EquityWeightedVoLLCalculator",
     "GridModel",
     "GridSensitivityAnalyzer",
     "GridSurrogateNet",
@@ -69,6 +74,7 @@ __all__ = [
     "ImpactFunction",
     "ImpactFunctionSet",
     "LowRankFlowEngine",
+    "MultiCriteriaDecisionSolver",
     "OperatorResponseModule",
     "predict_opf_states",
     "QuantileDeltaMapper",
