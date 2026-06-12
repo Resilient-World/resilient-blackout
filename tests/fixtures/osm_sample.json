@@ -1,0 +1,14 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API",
+  "elements": [
+    {"type": "node", "id": 1, "lat": 40.0, "lon": -74.0, "tags": {"power": "substation", "name": "Sub_A", "voltage": "138000"}},
+    {"type": "node", "id": 2, "lat": 40.01, "lon": -74.0, "tags": {"power": "substation", "name": "Sub_B", "voltage": "138000"}},
+    {"type": "node", "id": 3, "lat": 40.005, "lon": -73.995, "tags": {"power": "generator", "name": "Gen_1"}},
+    {"type": "node", "id": 4, "lat": 40.0, "lon": -73.99, "tags": {"power": "substation", "name": "Sub_C", "voltage": "12000"}},
+    {"type": "node", "id": 5, "lat": 40.01, "lon": -73.99, "tags": {"power": "substation", "name": "Sub_D", "voltage": "12000"}},
+    {"type": "way", "id": 101, "nodes": [1, 2], "tags": {"power": "line", "voltage": "138000", "name": "Line_HV"}},
+    {"type": "way", "id": 102, "nodes": [2, 4], "tags": {"power": "line", "voltage": "12000", "name": "Line_LV_1"}},
+    {"type": "way", "id": 103, "nodes": [4, 5], "tags": {"power": "line", "voltage": "12000", "name": "Line_LV_2"}}
+  ]
+}
