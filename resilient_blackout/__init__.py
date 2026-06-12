@@ -81,6 +81,20 @@ from resilient_blackout.grid.restoration import CrewRestorationRouter
 from resilient_blackout.grid.sectionalizing import GridSectionalizer
 from resilient_blackout.grid.thermal_dispatch import QSTSConfig, QSTSThermalDispatcher
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
+from resilient_blackout.app.backends import (
+    CascadeAnimatorBackend,
+    GridBackend,
+    HazardBackend,
+    ScorecardBackend,
+    SimulationRunner,
+)
+from resilient_blackout.app.demo_data import (
+    create_demo_cascade_history,
+    create_demo_grid,
+    create_demo_hazard,
+    create_demo_load_profile,
+    create_demo_rrs_report,
+)
 from resilient_blackout.ml.surrogate import GridSurrogateNet, predict_opf_states, train_surrogate
 from resilient_blackout.ml.weather_failure import WeatherFailurePredictor
 from resilient_blackout.reporting.rrs_scorecard import RRSReportGenerator
@@ -94,6 +108,16 @@ __all__ = [
     "CarbonEmissionsTracker",
     "CascadingProtectionEngine",
     "CascadingSimulator",
+    "CascadeAnimatorBackend",
+    "GridBackend",
+    "HazardBackend",
+    "ScorecardBackend",
+    "SimulationRunner",
+    "create_demo_cascade_history",
+    "create_demo_grid",
+    "create_demo_hazard",
+    "create_demo_load_profile",
+    "create_demo_rrs_report",
     "CEMMonteCarloSimulator",
     "ClimateScenario",
     "ClimateStorylineAdjuster",
