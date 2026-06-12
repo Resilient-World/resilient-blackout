@@ -80,6 +80,7 @@ from resilient_blackout.grid.sectionalizing import GridSectionalizer
 from resilient_blackout.grid.thermal_dispatch import QSTSConfig, QSTSThermalDispatcher
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
 from resilient_blackout.ml.surrogate import GridSurrogateNet, predict_opf_states, train_surrogate
+from resilient_blackout.ml.weather_failure import WeatherFailurePredictor
 from resilient_blackout.reporting.rrs_scorecard import RRSReportGenerator
 from resilient_blackout.utils.geo import map_hazard_to_assets
 
@@ -131,6 +132,7 @@ __all__ = [
     "RepairCrew",
     "SubstationFlooder",
     "train_surrogate",
+    "WeatherFailurePredictor",
     "WildfireRiskEngine",
     "map_hazard_to_assets",
 ]
