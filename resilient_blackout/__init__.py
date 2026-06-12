@@ -45,6 +45,7 @@ from resilient_blackout.economics.mcda import (
 )
 from resilient_blackout.economics.sensitivity import GridSensitivityAnalyzer
 from resilient_blackout.grid.cascade import CascadingSimulator
+from resilient_blackout.grid.cem_monte_carlo import CEMMonteCarloSimulator
 from resilient_blackout.grid.der_storage import OptimalIslandDispatch
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
 from resilient_blackout.grid.network import GridModel
@@ -65,6 +66,7 @@ __all__ = [
     "calculate_dynamic_ampacity",
     "CascadingProtectionEngine",
     "CascadingSimulator",
+    "CEMMonteCarloSimulator",
     "DLRGridController",
     "DynamicFragilityAdjuster",
     "EquityWeightedVoLLCalculator",
