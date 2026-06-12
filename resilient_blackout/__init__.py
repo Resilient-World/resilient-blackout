@@ -48,6 +48,7 @@ from resilient_blackout.grid.protection import (
     RelayModel,
 )
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
+from resilient_blackout.ml.surrogate import GridSurrogateNet, predict_opf_states, train_surrogate
 from resilient_blackout.utils.geo import map_hazard_to_assets
 
 __all__ = [
@@ -60,15 +61,18 @@ __all__ = [
     "DLRGridController",
     "DynamicFragilityAdjuster",
     "GridModel",
+    "GridSurrogateNet",
     "HazardEvent",
     "ImpactEngine",
     "ImpactFunction",
     "ImpactFunctionSet",
     "LowRankFlowEngine",
     "OperatorResponseModule",
+    "predict_opf_states",
     "QuantileDeltaMapper",
     "RelayModel",
     "RiskScenario",
+    "train_surrogate",
     "map_hazard_to_assets",
 ]
 __version__ = "0.1.0"
