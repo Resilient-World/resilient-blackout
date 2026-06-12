@@ -35,6 +35,7 @@ accumulation for electrical grid infrastructure exposed to natural perils.
 
 from resilient_blackout.climate.compound import CompoundHazardEngine
 from resilient_blackout.climate.downscaling import QuantileDeltaMapper
+from resilient_blackout.climate.ice_accretion import MakkonenIcer
 from resilient_blackout.climate.storyline import ClimateStorylineAdjuster
 from resilient_blackout.core.base import Asset, HazardEvent, RiskScenario
 from resilient_blackout.core.degradation import ArrheniusDegradationModel, DynamicFragilityAdjuster
@@ -95,6 +96,7 @@ __all__ = [
     "ImpactFunction",
     "ImpactFunctionSet",
     "LowRankFlowEngine",
+    "MakkonenIcer",
     "MultiCriteriaDecisionSolver",
     "OperatorResponseModule",
     "OptimalIslandDispatch",
