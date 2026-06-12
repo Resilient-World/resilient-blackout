@@ -70,6 +70,7 @@ from resilient_blackout.grid.protection import (
     OperatorResponseModule,
     RelayModel,
 )
+from resilient_blackout.grid.crew_routing import DamagedAsset, MultiCrewRestorationRouter, RepairCrew
 from resilient_blackout.grid.restoration import CrewRestorationRouter
 from resilient_blackout.grid.sectionalizing import GridSectionalizer
 from resilient_blackout.grid.thermal_dispatch import QSTSConfig, QSTSThermalDispatcher
@@ -91,6 +92,7 @@ __all__ = [
     "ClimateStorylineAdjuster",
     "CompoundHazardEngine",
     "CrewRestorationRouter",
+    "DamagedAsset",
     "DLRGridController",
     "DynamicFragilityAdjuster",
     "DynamicVoLLCalculator",
@@ -107,6 +109,7 @@ __all__ = [
     "LowRankFlowEngine",
     "MakkonenIcer",
     "MultiCriteriaDecisionSolver",
+    "MultiCrewRestorationRouter",
     "OperatorResponseModule",
     "OptimalIslandDispatch",
     "OptimalStochasticScheduler",
@@ -119,6 +122,7 @@ __all__ = [
     "ResilienceProject",
     "RiskScenario",
     "RRSReportGenerator",
+    "RepairCrew",
     "SubstationFlooder",
     "train_surrogate",
     "WildfireRiskEngine",
