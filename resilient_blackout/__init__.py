@@ -47,6 +47,10 @@ from resilient_blackout.economics.mcda import (
 )
 from resilient_blackout.economics.sensitivity import GridSensitivityAnalyzer
 from resilient_blackout.economics.voll_dynamic import DynamicVoLLCalculator
+from resilient_blackout.grid.btm_optimization import (
+    OptimalStochasticScheduler,
+    OutageScenario,
+)
 from resilient_blackout.grid.cascade import CascadingSimulator
 from resilient_blackout.grid.cem_monte_carlo import CEMMonteCarloSimulator
 from resilient_blackout.grid.der_storage import OptimalIslandDispatch
@@ -94,6 +98,8 @@ __all__ = [
     "MultiCriteriaDecisionSolver",
     "OperatorResponseModule",
     "OptimalIslandDispatch",
+    "OptimalStochasticScheduler",
+    "OutageScenario",
     "QSTSConfig",
     "QSTSThermalDispatcher",
     "predict_opf_states",
