@@ -48,6 +48,12 @@ ml = [
 sensitivity = [
     "salib>=1.4",
 ]
+app = [
+    "streamlit>=1.28",
+    "plotly>=5.18",
+    "folium>=0.15",
+    "streamlit-folium>=0.18",
+]
 
 [tool.setuptools.packages.find]
 include = ["resilient_blackout*"]
