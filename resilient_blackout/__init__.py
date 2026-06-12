@@ -68,6 +68,7 @@ from resilient_blackout.grid.distribution_metrics import (
 )
 from resilient_blackout.grid.emissions import CarbonEmissionsTracker
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
+from resilient_blackout.grid.multi_period_opf import MultiPeriodOPFScheduler
 from resilient_blackout.grid.network import GridModel
 from resilient_blackout.grid.osm_pipeline import OSMGridBuilder
 from resilient_blackout.grid.protection import (
@@ -117,6 +118,7 @@ __all__ = [
     "LowRankFlowEngine",
     "MakkonenIcer",
     "MultiCriteriaDecisionSolver",
+    "MultiPeriodOPFScheduler",
     "MicrogridIslandEvaluator",
     "MultiCrewRestorationRouter",
     "OperatorResponseModule",
