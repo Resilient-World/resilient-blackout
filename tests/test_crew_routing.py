@@ -331,17 +331,18 @@ class TestTwoOpt:
         router = MultiCrewRestorationRouter(G, crews)
 
         # Get initial greedy routes
-        routes = router._greedy_nearest_neighbor(assets)
+        node_to_idx = router._build_node_mapping(assets)
+        routes = router._greedy_nearest_neighbor(assets, node_to_idx)
         depot_to_asset, asset_to_asset = router._build_distance_matrix(assets)
 
         for c_idx, route in enumerate(routes):
             if len(route.sequence) > 2:
                 improved = router._two_opt(
-                    route, assets, asset_to_asset, depot_to_asset, c_idx
+                    route, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx
                 )
                 assert (
-                    router._route_cost(improved, assets, asset_to_asset, depot_to_asset, c_idx)
-                    <= router._route_cost(route, assets, asset_to_asset, depot_to_asset, c_idx)
+                    router._route_cost(improved, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx)
+                    <= router._route_cost(route, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx)
                     + _EPS
                 )
 
