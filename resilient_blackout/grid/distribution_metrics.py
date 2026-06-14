@@ -40,6 +40,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 
@@ -210,12 +211,13 @@ class IEEEMetricCalculator:
         if events.empty:
             return 0.0
 
-        # Count interruptions per customer
-        per_customer = events.groupby("bus").size().reindex(
-            self.bus_customers.keys(), fill_value=0
-        )
-        affected = (per_customer > n).sum()
-        return float(affected) / len(self.bus_customers)
+        # Count interruptions per bus, weighted by customer count
+        per_bus = events.groupby("bus").size()
+        affected_customers = 0
+        for bus_idx, count in per_bus.items():
+            if count > n:
+                affected_customers += self.bus_customers.get(bus_idx, 0)
+        return float(affected_customers) / n_total
 
     # ------------------------------------------------------------------
     # MEDs
@@ -355,9 +357,10 @@ class MicrogridIslandEvaluator:
     def _find_downstream_buses(self, failed_line_idx: int) -> List[int]:
         """Return buses isolated when *failed_line_idx* is opened.
 
-        Uses pandapower topology helpers to find the connected
-        component on the "to" side of the line (away from the
-        swing/ext grid).
+        Determines which side of the line is downstream (away from the
+        ext grid / swing bus) and returns the buses in that isolated
+        component.  Uses a line-exclusion approach to avoid mutating
+        the network.
 
         Parameters
         ----------
@@ -375,22 +378,23 @@ class MicrogridIslandEvaluator:
         from_bus = int(line["from_bus"])
         to_bus = int(line["to_bus"])
 
-        # Temporarily open the line and find connected components
-        original_in_service = bool(self.net.line.at[failed_line_idx, "in_service"])
-        self.net.line.at[failed_line_idx, "in_service"] = False
+        # Find which buses are ext_grid / swing
+        ext_buses = set(self.net.ext_grid.bus.values)
 
-        try:
-            components = pp.topology.connected_components(
-                self.net, respect_switches=False, respect_in_service=True
-            )
-            # Find the component containing to_bus
-            downstream = []
-            for comp in components:
-                if to_bus in comp:
-                    downstream = list(comp)
-                    break
-        finally:
-            self.net.line.at[failed_line_idx, "in_service"] = original_in_service
+        # Build a graph excluding the failed line
+        G = pp.topology.create_nxgraph(self.net, respect_switches=False)
+        if G.has_edge(from_bus, to_bus):
+            G.remove_edge(from_bus, to_bus)
+
+        # Find connected components after removing the line
+        components = list(nx.connected_components(G))
+
+        # Determine which component is downstream: the one without ext_grid
+        downstream: List[int] = []
+        for comp in components:
+            if not (set(comp) & ext_buses):
+                downstream = list(comp)
+                break
 
         return downstream
 

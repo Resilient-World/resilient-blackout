@@ -117,10 +117,10 @@ class TestIEEEMetricCalculator:
         net = _make_simple_net()
         calc = IEEEMetricCalculator(net)
         events = _make_outage_events()
-        # bus 2 has 3 interruptions, bus 3 has 2; n=5 -> none exceed
+        # bus 2 has 3 interruptions (100 customers), bus 3 has 2 (80 customers); n=5 -> none exceed
         assert calc.calculate_cemi_n(events, n=5) == 0.0
-        # n=1 -> bus 2 (3 > 1) and bus 3 (2 > 1) both exceed -> 2/4 buses
-        assert np.isclose(calc.calculate_cemi_n(events, n=1), 2 / 4, rtol=1e-6)
+        # n=1 -> bus 2 (3 > 1, 100 cust) and bus 3 (2 > 1, 80 cust) -> 180/180 = 1.0
+        assert np.isclose(calc.calculate_cemi_n(events, n=1), 180 / 180, rtol=1e-6)
 
     def test_meds(self) -> None:
         net = _make_simple_net()
