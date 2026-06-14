@@ -59,14 +59,14 @@ class TestMultiPeriodOPFSchedulerInit:
         sched = MultiPeriodOPFScheduler()
         assert sched.horizon_steps == 24
         assert sched.dt_hours == 1.0
-        assert sched.voll * 1000 == pytest.approx(10_000)
+        assert sched.voll == pytest.approx(10_000)
         assert sched.max_ramp_pu == 0.3
 
     def test_custom_parameters(self) -> None:
         sched = MultiPeriodOPFScheduler(horizon_steps=4, dt_hours=0.5, voll_usd_per_mwh=5000.0)
         assert sched.horizon_steps == 4
         assert sched.dt_hours == 0.5
-        assert sched.voll * 1000 == pytest.approx(5000)
+        assert sched.voll == pytest.approx(5000)
 
     def test_invalid_horizon_raises(self) -> None:
         with pytest.raises(ValueError, match="horizon_steps"):
