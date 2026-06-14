@@ -40,11 +40,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Union
 
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+from scipy.special import expit
 from shapely.geometry import Point
 
 logger = logging.getLogger(__name__)
@@ -62,6 +63,7 @@ _DEFAULT_GAMMA: float = 2.0
 _DEFAULT_FFE_M: float = 0.3
 _DEFAULT_LEVEE_M: float = 0.0
 _DEFAULT_PUMP_RATE_MPS: float = 0.0
+_DEFAULT_MAX_EXPONENT: float = 500.0
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +97,9 @@ class SubstationFlooder:
     default_flood_duration_s : float
         Default flood peak duration in seconds for pump mitigation
         calculation.  Default 3600 (1 hour).
+    max_exponent : float
+        Maximum absolute exponent value for numerical stability
+        in the log-logistic curve.  Default 500.0.
 
     Attributes
     ----------
@@ -112,6 +117,7 @@ class SubstationFlooder:
         default_levee_height_m: float = _DEFAULT_LEVEE_M,
         default_pump_rate_m_per_s: float = _DEFAULT_PUMP_RATE_MPS,
         default_flood_duration_s: float = 3600.0,
+        max_exponent: float = _DEFAULT_MAX_EXPONENT,
     ) -> None:
         if gamma <= 0:
             raise ValueError(f"gamma must be positive, got {gamma}")
@@ -130,12 +136,17 @@ class SubstationFlooder:
             raise ValueError(
                 f"default_flood_duration_s must be positive, got {default_flood_duration_s}"
             )
+        if max_exponent <= 0:
+            raise ValueError(
+                f"max_exponent must be positive, got {max_exponent}"
+            )
 
         self.gamma = float(gamma)
         self.default_ffe_m = float(default_ffe_m)
         self.default_levee_height_m = float(default_levee_height_m)
         self.default_pump_rate_mps = float(default_pump_rate_m_per_s)
         self.default_flood_duration_s = float(default_flood_duration_s)
+        self.max_exponent = float(max_exponent)
 
     # ------------------------------------------------------------------
     # Core physics
@@ -176,6 +187,7 @@ class SubstationFlooder:
         ffe_m: np.ndarray,
         levee_height_m: np.ndarray,
         gamma: float,
+        max_exponent: float = _DEFAULT_MAX_EXPONENT,
     ) -> np.ndarray:
         """Compute substation failure probability via log-logistic curve.
 
@@ -201,8 +213,8 @@ class SubstationFlooder:
         """
         water_above_ffe = d_effective_m - ffe_m - levee_height_m
         exponent = -gamma * water_above_ffe
-        exponent = np.clip(exponent, -500.0, 500.0)
-        return 1.0 / (1.0 + np.exp(exponent))
+        exponent = np.clip(exponent, -max_exponent, max_exponent)
+        return expit(exponent)
 
     # ------------------------------------------------------------------
     # Single-substation evaluation
@@ -248,19 +260,17 @@ class SubstationFlooder:
         pump = float(pump_rate_mps if pump_rate_mps is not None else self.default_pump_rate_mps)
         dt = float(flood_duration_s if flood_duration_s is not None else self.default_flood_duration_s)
 
-        d_raw = np.array([flood_depth_m])
-        pump_arr = np.array([pump])
-        ffe_arr = np.array([ffe])
-        levee_arr = np.array([levee])
-
-        d_eff = self._effective_depth(d_raw, pump_arr, dt)
-        p_f = self._failure_probability(d_eff, ffe_arr, levee_arr, self.gamma)
+        d_eff = max(0.0, flood_depth_m - pump * dt)
+        water_above_ffe = d_eff - ffe - levee
+        exponent = -self.gamma * water_above_ffe
+        exponent = max(-self.max_exponent, min(self.max_exponent, exponent))
+        p_f = float(expit(float(exponent)))
 
         return {
-            "raw_depth_m": float(d_raw[0]),
-            "effective_depth_m": float(d_eff[0]),
-            "failure_probability": float(p_f[0]),
-            "operational": bool(p_f[0] < 0.5),
+            "raw_depth_m": float(flood_depth_m),
+            "effective_depth_m": float(d_eff),
+            "failure_probability": p_f,
+            "operational": bool(p_f < 0.5),
             "ffe_m": ffe,
             "levee_height_m": levee,
         }
@@ -350,7 +360,7 @@ class SubstationFlooder:
         dt = float(flood_duration_s if flood_duration_s is not None else self.default_flood_duration_s)
 
         d_eff = self._effective_depth(depths, pump, dt)
-        p_f = self._failure_probability(d_eff, ffe, levee, self.gamma)
+        p_f = self._failure_probability(d_eff, ffe, levee, self.gamma, self.max_exponent)
 
         result["raw_depth_m"] = depths
         result["effective_depth_m"] = d_eff
@@ -471,7 +481,8 @@ class SubstationFlooder:
                 return np.zeros(len(substations_gdf), dtype=np.float64)
 
             sampled = np.array(
-                [float(val[0]) for val in src.sample(coords, indexes=band)],
+                [float(val[0]) if not src.nodata or val[0] != src.nodata else 0.0
+                 for val in src.sample(coords, indexes=band)],
                 dtype=np.float64,
             )
 
@@ -520,7 +531,7 @@ class SubstationFlooder:
         levee_arr = np.full(n, levee, dtype=np.float64)
 
         d_eff = self._effective_depth(depths, pump_arr, dt)
-        p_f = self._failure_probability(d_eff, ffe_arr, levee_arr, self.gamma)
+        p_f = self._failure_probability(d_eff, ffe_arr, levee_arr, self.gamma, self.max_exponent)
 
         return pd.DataFrame(
             {
