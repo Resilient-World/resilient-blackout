@@ -100,7 +100,7 @@ class TestVoltageLookup:
 
     def test_rounding(self) -> None:
         vn, _props = _resolve_voltage_kv("125000")
-        assert vn == 138  # nearest class
+        assert vn == 132  # nearest standard class to 125 kV
 
 
 # ---------------------------------------------------------------------------
