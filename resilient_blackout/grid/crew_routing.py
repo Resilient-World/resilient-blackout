@@ -148,6 +148,10 @@ class MultiCrewRestorationRouter:
         Weight on restoration delay penalty
         :math:`\\theta \\sum (T_{\\text{restored}} - T_{\\text{failed}})`.
         Default 1.0.
+    default_speed_kmh : float
+        Default travel speed in km/h for asset-to-asset distance
+        calculations when no crew-specific speed applies.
+        Default 40.0.
 
     Attributes
     ----------
@@ -163,6 +167,7 @@ class MultiCrewRestorationRouter:
         road_graph: nx.Graph,
         crews: List[RepairCrew],
         penalty_theta: float = 1.0,
+        default_speed_kmh: float = 40.0,
     ) -> None:
         if not crews:
             raise ValueError("crews list must not be empty")
@@ -170,11 +175,37 @@ class MultiCrewRestorationRouter:
             raise ValueError(
                 f"penalty_theta must be non-negative, got {penalty_theta}"
             )
+        if default_speed_kmh <= 0:
+            raise ValueError(
+                f"default_speed_kmh must be positive, got {default_speed_kmh}"
+            )
 
         self.road_graph = road_graph
         self.crews = list(crews)
         self.penalty_theta = float(penalty_theta)
+        self.default_speed_kmh = float(default_speed_kmh)
         self.result_: Optional[Dict[str, Any]] = None
+
+    # ------------------------------------------------------------------
+    # Node mapping
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_node_mapping(
+        assets: List[DamagedAsset],
+    ) -> Dict[Any, int]:
+        """Build a mapping from road-network node to asset index.
+
+        Parameters
+        ----------
+        assets : list of DamagedAsset
+
+        Returns
+        -------
+        dict
+            ``{node: asset_index}`` for O(1) lookups.
+        """
+        return {a.node: i for i, a in enumerate(assets)}
 
     # ------------------------------------------------------------------
     # Edge / path helpers
@@ -277,7 +308,7 @@ class MultiCrewRestorationRouter:
             for j, a_j in enumerate(assets):
                 if i != j:
                     asset_to_asset[i, j] = self._travel_time(
-                        a_i.node, a_j.node, 40.0  # nominal speed
+                        a_i.node, a_j.node, self.default_speed_kmh
                     )
 
         return depot_to_asset, asset_to_asset
@@ -289,6 +320,7 @@ class MultiCrewRestorationRouter:
     def _greedy_nearest_neighbor(
         self,
         assets: List[DamagedAsset],
+        node_to_idx: Dict[Any, int],
     ) -> List[_Route]:
         """Construct initial routes via greedy nearest-neighbour.
 
@@ -299,6 +331,8 @@ class MultiCrewRestorationRouter:
         Parameters
         ----------
         assets : list of DamagedAsset
+        node_to_idx : dict
+            Mapping from road-network node to asset index.
 
         Returns
         -------
@@ -310,16 +344,15 @@ class MultiCrewRestorationRouter:
 
         depot_to_asset, asset_to_asset = self._build_distance_matrix(assets)
 
-        assigned = set()
+        assigned: set[int] = set()
         routes: List[_Route] = []
 
         for c_idx, crew in enumerate(self.crews):
             remaining_materials = dict(crew.material_capacity)
-            sequence = [crew.depot_node]
+            sequence: List[Any] = [crew.depot_node]
             asset_ids: List[str] = []
             arrival_times: List[float] = [0.0]
             current_time = 0.0
-            current_node = crew.depot_node
             current_idx = -1  # depot index
 
             while len(assigned) < n_assets:
@@ -341,7 +374,6 @@ class MultiCrewRestorationRouter:
                     if travel == float("inf"):
                         continue
 
-                    # Objective: travel time + penalty for delay
                     arrival = current_time + travel
                     delay_penalty = self.penalty_theta * max(
                         0.0, arrival - asset.failure_time_h
@@ -362,10 +394,9 @@ class MultiCrewRestorationRouter:
                     travel = asset_to_asset[current_idx, best_idx]
 
                 current_time += travel + asset.repair_duration_h
-                current_node = asset.node
                 current_idx = best_idx
 
-                sequence.append(current_node)
+                sequence.append(asset.node)
                 asset_ids.append(asset.asset_id)
                 arrival_times.append(current_time - asset.repair_duration_h)
                 assigned.add(best_idx)
@@ -373,19 +404,15 @@ class MultiCrewRestorationRouter:
                 for mat, qty in asset.required_materials.items():
                     remaining_materials[mat] = remaining_materials.get(mat, 0.0) - qty
 
-            # Compute total travel time
             total_travel = 0.0
-            for i in range(len(sequence) - 1):
-                if i == 0:
-                    total_travel += depot_to_asset[c_idx, assets.index(next(
-                        a for a in assets if a.node == sequence[1]
-                    ))]
+            prev_idx = -1
+            for node in sequence[1:]:
+                a_idx = node_to_idx[node]
+                if prev_idx == -1:
+                    total_travel += depot_to_asset[c_idx, a_idx]
                 else:
-                    a_i = next(a for a in assets if a.node == sequence[i])
-                    a_j = next(a for a in assets if a.node == sequence[i + 1])
-                    idx_i = assets.index(a_i)
-                    idx_j = assets.index(a_j)
-                    total_travel += asset_to_asset[idx_i, idx_j]
+                    total_travel += asset_to_asset[prev_idx, a_idx]
+                prev_idx = a_idx
 
             total_repair = sum(
                 a.repair_duration_h for a in assets if a.asset_id in asset_ids
@@ -415,6 +442,7 @@ class MultiCrewRestorationRouter:
         asset_to_asset: np.ndarray,
         depot_to_asset: np.ndarray,
         c_idx: int,
+        node_to_idx: Dict[Any, int],
     ) -> float:
         """Compute total cost (travel + penalty) of a route."""
         if len(route.sequence) <= 1:
@@ -425,19 +453,16 @@ class MultiCrewRestorationRouter:
 
         for i in range(len(route.sequence) - 1):
             if i == 0:
-                a_j = next(a for a in assets if a.node == route.sequence[1])
-                j_idx = assets.index(a_j)
+                j_idx = node_to_idx[route.sequence[1]]
                 travel = depot_to_asset[c_idx, j_idx]
             else:
-                a_i = next(a for a in assets if a.node == route.sequence[i])
-                a_j = next(a for a in assets if a.node == route.sequence[i + 1])
-                idx_i = assets.index(a_i)
-                idx_j = assets.index(a_j)
+                idx_i = node_to_idx[route.sequence[i]]
+                idx_j = node_to_idx[route.sequence[i + 1]]
                 travel = asset_to_asset[idx_i, idx_j]
 
             current_time += travel
             if i > 0:
-                asset = next(a for a in assets if a.node == route.sequence[i])
+                asset = assets[node_to_idx[route.sequence[i]]]
                 cost += self.penalty_theta * max(
                     0.0, current_time - asset.failure_time_h
                 )
@@ -453,6 +478,7 @@ class MultiCrewRestorationRouter:
         asset_to_asset: np.ndarray,
         depot_to_asset: np.ndarray,
         c_idx: int,
+        node_to_idx: Dict[Any, int],
     ) -> _Route:
         """Apply 2-opt local search to a single route.
 
@@ -466,6 +492,8 @@ class MultiCrewRestorationRouter:
         depot_to_asset : np.ndarray
         c_idx : int
             Crew index.
+        node_to_idx : dict
+            Node-to-asset-index mapping.
 
         Returns
         -------
@@ -475,7 +503,7 @@ class MultiCrewRestorationRouter:
         if len(route.sequence) <= 2:
             return route
 
-        best_cost = self._route_cost(route, assets, asset_to_asset, depot_to_asset, c_idx)
+        best_cost = self._route_cost(route, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx)
         improved = True
         max_iter = 100
         iteration = 0
@@ -493,11 +521,11 @@ class MultiCrewRestorationRouter:
                         + route.sequence[j:]
                     )
                     new_asset_ids = [
-                        next(a.asset_id for a in assets if a.node == node)
+                        assets[node_to_idx[node]].asset_id
                         for node in new_sequence[1:]
                     ]
                     new_arrival_times = self._compute_arrival_times(
-                        new_sequence, assets, depot_to_asset, asset_to_asset, c_idx
+                        new_sequence, assets, depot_to_asset, asset_to_asset, c_idx, node_to_idx
                     )
 
                     new_route = _Route(
@@ -510,7 +538,7 @@ class MultiCrewRestorationRouter:
                     )
 
                     new_cost = self._route_cost(
-                        new_route, assets, asset_to_asset, depot_to_asset, c_idx
+                        new_route, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx
                     )
 
                     if new_cost < best_cost - _EPS:
@@ -521,6 +549,18 @@ class MultiCrewRestorationRouter:
                 if improved:
                     break
 
+        # Recompute travel_time_h from distance matrices
+        total_travel = 0.0
+        prev_idx = -1
+        for node in route.sequence[1:]:
+            a_idx = node_to_idx[node]
+            if prev_idx == -1:
+                total_travel += depot_to_asset[c_idx, a_idx]
+            else:
+                total_travel += asset_to_asset[prev_idx, a_idx]
+            prev_idx = a_idx
+        route.travel_time_h = total_travel
+
         return route
 
     def _compute_arrival_times(
@@ -530,6 +570,7 @@ class MultiCrewRestorationRouter:
         depot_to_asset: np.ndarray,
         asset_to_asset: np.ndarray,
         c_idx: int,
+        node_to_idx: Dict[Any, int],
     ) -> List[float]:
         """Compute arrival times for a node sequence."""
         if len(sequence) <= 1:
@@ -540,19 +581,16 @@ class MultiCrewRestorationRouter:
 
         for i in range(1, len(sequence)):
             if i == 1:
-                a_j = next(a for a in assets if a.node == sequence[1])
-                j_idx = assets.index(a_j)
+                j_idx = node_to_idx[sequence[1]]
                 travel = depot_to_asset[c_idx, j_idx]
             else:
-                a_i = next(a for a in assets if a.node == sequence[i - 1])
-                a_j = next(a for a in assets if a.node == sequence[i])
-                idx_i = assets.index(a_i)
-                idx_j = assets.index(a_j)
+                idx_i = node_to_idx[sequence[i - 1]]
+                idx_j = node_to_idx[sequence[i]]
                 travel = asset_to_asset[idx_i, idx_j]
 
             current_time += travel
             arrival_times.append(current_time)
-            asset = next(a for a in assets if a.node == sequence[i])
+            asset = assets[node_to_idx[sequence[i]]]
             current_time += asset.repair_duration_h
 
         return arrival_times
@@ -598,14 +636,15 @@ class MultiCrewRestorationRouter:
             }
 
         # Greedy construction
-        routes = self._greedy_nearest_neighbor(assets)
+        node_to_idx = self._build_node_mapping(assets)
+        routes = self._greedy_nearest_neighbor(assets, node_to_idx)
 
         # 2-opt improvement
         depot_to_asset, asset_to_asset = self._build_distance_matrix(assets)
         improved_routes: List[_Route] = []
         for c_idx, route in enumerate(routes):
             improved = self._two_opt(
-                route, assets, asset_to_asset, depot_to_asset, c_idx
+                route, assets, asset_to_asset, depot_to_asset, c_idx, node_to_idx
             )
             improved_routes.append(improved)
 
