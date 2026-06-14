@@ -44,6 +44,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.constants import Stefan_Boltzmann, g
 
 logger = logging.getLogger(__name__)
 
@@ -56,10 +57,8 @@ _KELVIN_OFFSET: float = 273.15
 _LATENT_HEAT_FUSION: float = 3.34e5  # J/kg
 _SPECIFIC_HEAT_WATER: float = 4186.0  # J/(kg·K)
 _SPECIFIC_HEAT_AIR: float = 1005.0  # J/(kg·K)
-_STEFAN_BOLTZMANN: float = 5.670367e-8  # W/(m²·K⁴)
 _GAS_CONSTANT_DRY_AIR: float = 287.058  # J/(kg·K)
 _GAS_CONSTANT_WATER_VAPOUR: float = 461.5  # J/(kg·K)
-_GRAVITY: float = 9.80665  # m/s²
 
 _DEFAULT_ICE_DENSITY: Dict[str, float] = {
     "glaze": 917.0,
@@ -278,6 +277,7 @@ class MakkonenIcer:
         alpha_1: np.ndarray,
         pressure_pa: float = 101_325.0,
         relative_humidity: float = 0.85,
+        emissivity: float = 0.9,
     ) -> np.ndarray:
         """Compute accretion (freezing) efficiency α₃ via heat balance.
 
@@ -342,7 +342,7 @@ class MakkonenIcer:
         Q_e = h_e * _LATENT_HEAT_FUSION * (e_sat_0 - e_air)
 
         # --- Radiative cooling (W/m²) ---
-        Q_r = _STEFAN_BOLTZMANN * 0.9 * (T_k**4 - (_KELVIN_OFFSET) ** 4)
+        Q_r = Stefan_Boltzmann * emissivity * (T_k**4 - (_KELVIN_OFFSET) ** 4)
 
         # --- Droplet warming (W/m²) ---
         lwc_kg_m3 = lwc_g_m3 / 1000.0
@@ -454,23 +454,24 @@ class MakkonenIcer:
                 alpha_1_arr[i] = float(
                     self._collision_efficiency(
                         self.droplet_mvd,
-                        np.array([V[i]]),
-                        np.array([D_current]),
-                    )[0]
+                        V[i],
+                        D_current,
+                    )
                 )
 
             alpha_3_arr[i] = 1.0
             if V[i] > 0.1 and LWC[i] > _EPS and T[i] < 0.5:
                 alpha_3_arr[i] = float(
                     self._accretion_efficiency(
-                        np.array([T[i]]),
-                        np.array([V[i]]),
-                        np.array([D_current]),
-                        np.array([LWC[i]]),
-                        np.array([alpha_1_arr[i]]),
+                        T[i],
+                        V[i],
+                        D_current,
+                        LWC[i],
+                        alpha_1_arr[i],
                         pressure_pa=float(P[i]),
                         relative_humidity=float(RH[i]),
-                    )[0]
+                        emissivity=self.emissivity,
+                    )
                 )
 
             dM_dt = (
@@ -491,7 +492,7 @@ class MakkonenIcer:
 
         ice_thickness = (D[1:] - self.conductor_diameter_m) / 2.0
         total_mass_per_m = self.conductor_mass_per_m + M[1:]
-        total_weight_per_m = total_mass_per_m * _GRAVITY
+        total_weight_per_m = total_mass_per_m * g
 
         tension_n = total_weight_per_m * self.span_length_m**2 / (8.0 * 1.0)
         tension_ratio = tension_n / self.max_tension_n
@@ -566,7 +567,7 @@ class MakkonenIcer:
         max_diameter = float(self.result_["diameter_m"].max())
 
         total_mass = self.conductor_mass_per_m + max_ice_mass
-        vertical_weight = total_mass * _GRAVITY  # N/m
+        vertical_weight = total_mass * g  # N/m
 
         if gust_wind_speed_mps > 0:
             air_density = 1.225
@@ -577,7 +578,7 @@ class MakkonenIcer:
         else:
             resultant_force = vertical_weight
 
-        sag_m = 1.0
+        sag_m = self.span_length_m * 0.02
         peak_tension = resultant_force * self.span_length_m**2 / (8.0 * sag_m)
 
         safety_factor = self.max_tension_n / peak_tension if peak_tension > _EPS else float("inf")
