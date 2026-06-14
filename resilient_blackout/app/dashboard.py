@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import numpy as np
 
@@ -35,11 +35,9 @@ except ImportError as exc:  # pragma: no cover
 
 try:
     import plotly.express as px
-    import plotly.graph_objects as go
 except ImportError as exc:  # pragma: no cover
     _MISSING_DEPS.append(f"plotly: {exc}")
     px = None  # type: ignore[assignment]
-    go = None  # type: ignore[assignment]
 
 try:
     import folium
@@ -90,17 +88,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
-
-# ---------------------------------------------------------------------------
-# Session state helpers
-# ---------------------------------------------------------------------------
-
-
-def _ensure_session_state(key: str, default: Any) -> Any:
-    if key not in st.session_state:
-        st.session_state[key] = default
-    return st.session_state[key]
-
 
 # ---------------------------------------------------------------------------
 # Sidebar — Scenario Selector
@@ -248,7 +235,7 @@ def render_spatial_map(grid_backend: GridBackend, hazard_backend: HazardBackend)
             tooltip=name,
         ).add_to(m)
 
-    st_folium(m, width=700, height=500, returned_objects=[])
+    st_folium(m, use_container_width=True, returned_objects=[])
 
     # Legend
     legend_html = """
