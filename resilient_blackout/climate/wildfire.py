@@ -39,7 +39,7 @@ Poisson-process failure modelling.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Union
 
 import geopandas as gpd
 import numpy as np
@@ -49,9 +49,7 @@ from shapely.geometry import (
     MultiPolygon,
     Point,
     Polygon,
-    base,
 )
-from shapely.ops import unary_union
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +61,8 @@ _DEFAULT_SMOKE_DERATING: float = 0.5
 _DEFAULT_PM25_THRESHOLD: float = 150.0  # µg/m³ (US EPA unhealthy)
 _DEFAULT_FLAME_TEMP_K: float = 1073.15  # 800 °C
 _DEFAULT_AMBIENT_TEMP_K: float = 298.15  # 25 °C
+_DEFAULT_MIN_BUFFER_DISTANCE_M: float = 1.0
+_DEFAULT_MAX_EXPONENT: float = 50.0
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +102,13 @@ class WildfireRiskEngine:
     default_ambient_temp_k : float
         Default ambient temperature in Kelvin when not provided.
         Default 298.15 (25 °C).
+    min_buffer_distance_m : float
+        Minimum buffer distance clamp in metres to prevent
+        division-by-zero in the failure-rate exponent.
+        Default 1.0.
+    max_exponent : float
+        Maximum allowed exponent value to prevent numerical
+        overflow in the failure-rate calculation.  Default 50.0.
 
     Attributes
     ----------
@@ -123,6 +130,8 @@ class WildfireRiskEngine:
         default_ampacity_a: float = 1000.0,
         default_flame_temp_k: float = _DEFAULT_FLAME_TEMP_K,
         default_ambient_temp_k: float = _DEFAULT_AMBIENT_TEMP_K,
+        min_buffer_distance_m: float = _DEFAULT_MIN_BUFFER_DISTANCE_M,
+        max_exponent: float = _DEFAULT_MAX_EXPONENT,
     ) -> None:
         if base_failure_rate < 0:
             raise ValueError(
@@ -145,6 +154,14 @@ class WildfireRiskEngine:
             raise ValueError(
                 f"default_ampacity_a must be positive, got {default_ampacity_a}"
             )
+        if min_buffer_distance_m <= 0:
+            raise ValueError(
+                f"min_buffer_distance_m must be positive, got {min_buffer_distance_m}"
+            )
+        if max_exponent <= 0:
+            raise ValueError(
+                f"max_exponent must be positive, got {max_exponent}"
+            )
 
         self.lambda_0 = float(base_failure_rate)
         self.gamma = float(vulnerability_gamma)
@@ -153,6 +170,8 @@ class WildfireRiskEngine:
         self.I_max0 = float(default_ampacity_a)
         self.default_T_flame = float(default_flame_temp_k)
         self.default_T_ambient = float(default_ambient_temp_k)
+        self.min_buffer_distance = float(min_buffer_distance_m)
+        self.max_exponent = float(max_exponent)
 
     # ------------------------------------------------------------------
     # Core physics
@@ -213,11 +232,11 @@ class WildfireRiskEngine:
             Dynamic failure rate in failures per second.
         """
         if D_buffer < _EPS:
-            D_buffer = 1.0
+            D_buffer = self.min_buffer_distance
 
         delta_T = max(0.0, T_flame - T_ambient)
         exponent = self.gamma * delta_T / D_buffer
-        exponent = min(exponent, 50.0)
+        exponent = min(exponent, self.max_exponent)
 
         return self.lambda_0 * np.exp(exponent)
 
@@ -399,7 +418,7 @@ class WildfireRiskEngine:
             if geom is None or geom.is_empty:
                 distances[i] = np.inf
             else:
-                distances[i] = self._minimum_distance(geom, fire_front)
+                distances[i] = WildfireRiskEngine._minimum_distance(geom, fire_front)
 
         if T_ambient is None:
             T_ambient_arr = np.full(len(lines_gdf), self.default_T_ambient, dtype=np.float64)
@@ -409,8 +428,8 @@ class WildfireRiskEngine:
             T_ambient_arr = np.asarray(T_ambient, dtype=np.float64)
 
         delta_T = np.maximum(0.0, T_flame - T_ambient_arr)
-        D_clipped = np.maximum(distances, 1.0)
-        exponent = np.minimum(self.gamma * delta_T / D_clipped, 50.0)
+        D_clipped = np.maximum(distances, self.min_buffer_distance)
+        exponent = np.minimum(self.gamma * delta_T / D_clipped, self.max_exponent)
         lambda_arr = self.lambda_0 * np.exp(exponent)
 
         p_trip_arr = 1.0 - np.exp(-lambda_arr * dt_seconds)
