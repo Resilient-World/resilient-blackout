@@ -89,6 +89,14 @@ class WeatherFailurePredictor:
     asset_type : str or None
         Asset type this model targets (``"line"``, ``"gen"``,
         ``"trafo"``, or ``None`` for all).  Default ``None``.
+    use_smote : bool
+        If ``True``, apply SMOTE oversampling to the training set
+        to handle class imbalance.  Requires ``imbalanced-learn``.
+        Default ``False``.
+    asset_id_format : str
+        Format string for mapping pandapower indices to asset IDs
+        in :meth:`apply_to_network`.  Must contain ``{type}`` and
+        ``{idx}`` placeholders.  Default ``"{type}_{idx}"``.
     random_state : int
         Seed for reproducible train/test splits and forest sampling.
 
@@ -110,6 +118,8 @@ class WeatherFailurePredictor:
         model_type: str = "logistic",
         class_weight: Optional[str] = "balanced",
         asset_type: Optional[str] = None,
+        use_smote: bool = False,
+        asset_id_format: str = "{type}_{idx}",
         random_state: int = 42,
     ) -> None:
         if model_type not in {"logistic", "random_forest"}:
@@ -120,11 +130,18 @@ class WeatherFailurePredictor:
             raise ValueError(
                 f"asset_type must be 'line', 'gen', 'trafo', or None, got {asset_type}"
             )
+        if "{type}" not in asset_id_format or "{idx}" not in asset_id_format:
+            raise ValueError(
+                f"asset_id_format must contain {{type}} and {{idx}} placeholders, "
+                f"got {asset_id_format}"
+            )
 
         self.feature_cols: List[str] = list(feature_cols or _DEFAULT_FEATURES)
         self.model_type = model_type
         self.class_weight = class_weight
         self.asset_type = asset_type
+        self.use_smote = use_smote
+        self.asset_id_format = asset_id_format
         self.random_state = random_state
 
         self.pipeline_: Optional[Pipeline] = None
@@ -174,6 +191,18 @@ class WeatherFailurePredictor:
         X_train, X_val, y_train, y_val = train_test_split(
             X, y, test_size=test_size, random_state=self.random_state, stratify=y
         )
+
+        # Apply SMOTE if requested
+        if self.use_smote:
+            try:
+                from imblearn.over_sampling import SMOTE
+            except ImportError:
+                raise ImportError(
+                    "imbalanced-learn is required for SMOTE. Install with: pip install imbalanced-learn"
+                )
+            smote = SMOTE(random_state=self.random_state)
+            X_train, y_train = smote.fit_resample(X_train, y_train)
+            logger.info("SMOTE applied — training samples: %d", len(y_train))
 
         clf = self._build_classifier()
         self.pipeline_ = Pipeline([("scaler", StandardScaler()), ("clf", clf)])
@@ -325,19 +354,19 @@ class WeatherFailurePredictor:
 
         if asset_type == "line":
             for idx in net.line.index:
-                aid = f"line_{idx}"
+                aid = self.asset_id_format.format(type=asset_type, idx=idx)
                 if aid in probs and rng.random() < probs[aid]:
                     net.line.at[idx, "in_service"] = False
                     tripped.append(aid)
         elif asset_type == "gen":
             for idx in net.gen.index:
-                aid = f"gen_{idx}"
+                aid = self.asset_id_format.format(type=asset_type, idx=idx)
                 if aid in probs and rng.random() < probs[aid]:
                     net.gen.at[idx, "in_service"] = False
                     tripped.append(aid)
         elif asset_type == "trafo":
             for idx in net.trafo.index:
-                aid = f"trafo_{idx}"
+                aid = self.asset_id_format.format(type=asset_type, idx=idx)
                 if aid in probs and rng.random() < probs[aid]:
                     net.trafo.at[idx, "in_service"] = False
                     tripped.append(aid)
@@ -349,6 +378,42 @@ class WeatherFailurePredictor:
                 "WeatherFailurePredictor tripped %d %s(s).", len(tripped), asset_type
             )
         return tripped
+
+    # ------------------------------------------------------------------
+    # Feature importance
+    # ------------------------------------------------------------------
+
+    def feature_importance(self) -> Dict[str, float]:
+        """Return per-feature importance scores.
+
+        For LogisticRegression, returns absolute coefficient magnitudes.
+        For RandomForest, returns the built-in feature importances.
+
+        Returns
+        -------
+        dict
+            ``{feature_name: importance}`` sorted descending.
+
+        Raises
+        ------
+        RuntimeError
+            If the model has not been fitted.
+        """
+        if self.pipeline_ is None:
+            raise RuntimeError("Model has not been fitted. Call fit_vulnerability_model() first.")
+
+        clf = self.pipeline_.named_steps["clf"]
+        if self.model_type == "logistic":
+            importances = np.abs(clf.coef_[0])
+        else:
+            importances = clf.feature_importances_
+
+        pairs = sorted(
+            zip(self.feature_cols, importances),
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        return {feat: float(val) for feat, val in pairs}
 
     # ------------------------------------------------------------------
     # Persistence
@@ -372,6 +437,8 @@ class WeatherFailurePredictor:
             "model_type": self.model_type,
             "class_weight": self.class_weight,
             "asset_type": self.asset_type,
+            "use_smote": self.use_smote,
+            "asset_id_format": self.asset_id_format,
             "val_metrics": self.val_metrics_,
         }
         joblib.dump(payload, path)
@@ -395,6 +462,8 @@ class WeatherFailurePredictor:
             model_type=payload["model_type"],
             class_weight=payload["class_weight"],
             asset_type=payload["asset_type"],
+            use_smote=payload.get("use_smote", False),
+            asset_id_format=payload.get("asset_id_format", "{type}_{idx}"),
         )
         instance.pipeline_ = payload["pipeline"]
         instance.val_metrics_ = payload.get("val_metrics")
