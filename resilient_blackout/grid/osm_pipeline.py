@@ -81,29 +81,36 @@ _VOLTAGE_LOOKUP: Dict[str, _VoltageEntry] = {
     "11":  {"r_ohm_per_km": 0.340, "x_ohm_per_km": 0.430, "max_i_ka": 0.25, "c_nf_per_km": 11.0},
 }
 
-# Common voltage synonyms / rounding targets (V → lookup key in kV)
-_VOLTAGE_ALIASES: Dict[int, int] = {
-    110000: 110, 115000: 115, 132000: 132, 138000: 138,
-    220000: 220, 230000: 230, 345000: 345, 380000: 400,
-    400000: 400, 500000: 500, 765000: 765, 69000: 69,
-    35000: 35, 34500: 35, 22000: 22, 20000: 20,
-    15000: 15, 13800: 13, 13200: 13, 12700: 13,
-    12470: 12, 11000: 11,
-}
-
 
 def _resolve_voltage_kv(raw_v: Any, default_kv: float = 12.47) -> Tuple[float, _VoltageEntry]:
     """Map raw OSM voltage tag to nearest standard class."""
-    try:
-        v_int = int(str(raw_v).replace(" ", "").replace("V", "").replace("kV", "000").replace(".", ""))
-    except (ValueError, TypeError):
+    if raw_v is None or (isinstance(raw_v, str) and raw_v.strip() == ""):
         return default_kv, _VOLTAGE_LOOKUP.get(str(int(default_kv)), _VOLTAGE_LOOKUP["12"])
 
-    if v_int in _VOLTAGE_ALIASES:
-        key = str(_VOLTAGE_ALIASES[v_int])
-        return int(key), _VOLTAGE_LOOKUP[key]
+    s = str(raw_v).strip().lower().replace(" ", "")
 
-    kv = v_int / 1000.0
+    # Determine if value is in kV or V based on suffix
+    if s.endswith("kv"):
+        num_str = s[:-2]
+        multiplier = 1.0
+    elif s.endswith("v"):
+        num_str = s[:-1]
+        multiplier = 1e-3
+    else:
+        num_str = s
+        # Heuristic: if >= 1000, assume volts; otherwise assume kV
+        try:
+            val = float(num_str)
+            multiplier = 1e-3 if val >= 1000 else 1.0
+        except ValueError:
+            return default_kv, _VOLTAGE_LOOKUP.get(str(int(default_kv)), _VOLTAGE_LOOKUP["12"])
+
+    try:
+        kv = float(num_str) * multiplier
+    except ValueError:
+        return default_kv, _VOLTAGE_LOOKUP.get(str(int(default_kv)), _VOLTAGE_LOOKUP["12"])
+
+    # Find nearest standard voltage class
     nearest = min(_VOLTAGE_LOOKUP.keys(), key=lambda k: abs(float(k) - kv))
     return float(nearest), _VOLTAGE_LOOKUP[nearest]
 
@@ -281,6 +288,10 @@ class OSMGridBuilder:
         nodes_proj = nodes_gdf.to_crs(utm_crs)
         lines_proj = lines_gdf.to_crs(utm_crs)
 
+        # Build spatial index for O(log n) nearest-neighbour queries
+        sindex = nodes_proj.sindex
+        node_osm_ids = nodes_gdf["osm_id"].values
+
         from_nodes: List[Optional[int]] = []
         to_nodes: List[Optional[int]] = []
         for _idx, row in lines_proj.iterrows():
@@ -291,12 +302,28 @@ class OSMGridBuilder:
                 continue
             start = Point(geom.coords[0])
             end = Point(geom.coords[-1])
-            ds = nodes_proj.geometry.distance(start)
-            de = nodes_proj.geometry.distance(end)
-            i_s = ds.idxmin()
-            i_e = de.idxmin()
-            from_nodes.append(int(nodes_gdf.at[i_s, "osm_id"]) if ds[i_s] <= self.snap_threshold_m else None)
-            to_nodes.append(int(nodes_gdf.at[i_e, "osm_id"]) if de[i_e] <= self.snap_threshold_m else None)
+
+            # Use spatial index for fast nearest lookup
+            candidates_s = list(sindex.nearest(start.bounds, return_all=False))
+            candidates_e = list(sindex.nearest(end.bounds, return_all=False))
+
+            if candidates_s:
+                ds = nodes_proj.geometry.iloc[candidates_s].distance(start)
+                best_s = candidates_s[ds.idxmin()]
+                from_nodes.append(
+                    int(node_osm_ids[best_s]) if ds.min() <= self.snap_threshold_m else None
+                )
+            else:
+                from_nodes.append(None)
+
+            if candidates_e:
+                de = nodes_proj.geometry.iloc[candidates_e].distance(end)
+                best_e = candidates_e[de.idxmin()]
+                to_nodes.append(
+                    int(node_osm_ids[best_e]) if de.min() <= self.snap_threshold_m else None
+                )
+            else:
+                to_nodes.append(None)
 
         lines_gdf["from_node"] = from_nodes
         lines_gdf["to_node"] = to_nodes
@@ -500,9 +527,9 @@ class OSMGridBuilder:
         import pandapower as pp
 
         strategies = [
-            ("nr", lambda: (pp.runpp(net, algorithm="nr", init="auto"), None)[0]),
-            ("bfsw", lambda: (pp.runpp(net, algorithm="bfsw", init="dc", max_iteration=50), None)[0]),
-            ("dc", lambda: (pp.rundcpp(net), None)[0]),
+            ("nr", lambda: pp.runpp(net, algorithm="nr", init="auto")),
+            ("bfsw", lambda: pp.runpp(net, algorithm="bfsw", init="dc", max_iteration=50)),
+            ("dc", lambda: pp.rundcpp(net)),
         ]
 
         for label, strategy in strategies:
