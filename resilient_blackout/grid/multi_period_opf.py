@@ -113,7 +113,7 @@ class MultiPeriodOPFScheduler:
 
         self.horizon_steps = horizon_steps
         self.dt_hours = dt_hours
-        self.voll = voll_usd_per_mwh / 1000.0  # $/kWh
+        self.voll = voll_usd_per_mwh  # $/MWh
         self.max_ramp_pu = max_ramp_pu_per_step
         self.n_cost_segments = max(1, n_cost_segments)
 
@@ -569,16 +569,9 @@ class MultiPeriodOPFScheduler:
     # ------------------------------------------------------------------
 
     def _ensure_storage(self, net: Any) -> Any:
-        """Create an empty pandapower storage table if missing."""
-        if not hasattr(net, "storage") or net.storage is None or len(net.storage) == 0:
-            import pandapower as pp
-            # No-op: storage table will exist as empty DataFrame
-            if not hasattr(net, "storage") or net.storage is None:
-                net.storage = pd.DataFrame(
-                    columns=["name", "bus", "p_mw", "q_mvar", "sn_mva",
-                             "soc_percent", "min_e_mwh", "max_e_mwh",
-                             "in_service"]
-                )
+        """Ensure the pandapower storage table exists."""
+        if not hasattr(net, "storage") or net.storage is None:
+            net.storage = pd.DataFrame()
         return net
 
     def _extract_solution(
@@ -635,10 +628,8 @@ class MultiPeriodOPFScheduler:
                 "e_mwh": e,
             }
 
-        # Approximate line loading from net.line.max_i_ka if available
+        # Line loading is not available from LP-only solve; return zeros
         line_loading = np.zeros(T)
-        if hasattr(net, "res_line") and hasattr(net.res_line, "loading_percent"):
-            line_loading = net.res_line["loading_percent"].values.copy()
 
         return {
             "status": 0,
@@ -658,5 +649,5 @@ class MultiPeriodOPFScheduler:
     def __repr__(self) -> str:
         return (
             f"MultiPeriodOPFScheduler(horizon={self.horizon_steps}, "
-            f"dt={self.dt_hours}h, voll={self.voll * 1000:.0f})"
+            f"dt={self.dt_hours}h, voll={self.voll:.0f})"
         )
