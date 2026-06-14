@@ -177,6 +177,12 @@ class InvestmentPortfolioOptimizer:
         Annual discount rate for CAPEX amortisation.  Default 0.05.
     planning_horizon_years : int
         Planning horizon in years.  Default 20.
+    failure_weight : float
+        Weight assigned to failure-rate reduction in the risk-reduction
+        composite.  Must be in [0, 1].  Default 0.7.
+    recovery_weight : float
+        Weight assigned to recovery-time reduction.  Must be in [0, 1]
+        and sum with *failure_weight* to 1.0.  Default 0.3.
 
     Attributes
     ----------
@@ -198,6 +204,8 @@ class InvestmentPortfolioOptimizer:
         budget_usd: float,
         discount_rate: float = 0.05,
         planning_horizon_years: int = 20,
+        failure_weight: float = 0.7,
+        recovery_weight: float = 0.3,
     ) -> None:
         if not projects:
             raise ValueError("projects list must not be empty")
@@ -213,12 +221,27 @@ class InvestmentPortfolioOptimizer:
             raise ValueError(
                 f"planning_horizon_years must be positive, got {planning_horizon_years}"
             )
+        if not (0 <= failure_weight <= 1):
+            raise ValueError(
+                f"failure_weight must be in [0, 1], got {failure_weight}"
+            )
+        if not (0 <= recovery_weight <= 1):
+            raise ValueError(
+                f"recovery_weight must be in [0, 1], got {recovery_weight}"
+            )
+        if abs(failure_weight + recovery_weight - 1.0) > 1e-9:
+            raise ValueError(
+                f"failure_weight + recovery_weight must equal 1.0, "
+                f"got {failure_weight} + {recovery_weight} = {failure_weight + recovery_weight}"
+            )
 
         self.projects = list(projects)
         self.scenarios = list(scenarios)
         self.budget_usd = float(budget_usd)
         self.discount_rate = float(discount_rate)
         self.horizon_years = int(planning_horizon_years)
+        self.failure_weight = float(failure_weight)
+        self.recovery_weight = float(recovery_weight)
 
         self.result_: Optional[Dict[str, Any]] = None
         self.frontier_: Optional[List[Dict[str, Any]]] = None
@@ -320,19 +343,15 @@ class InvestmentPortfolioOptimizer:
         for s_idx, sc in enumerate(self.scenarios):
             for k_idx, proj in enumerate(self.projects):
                 risk_reduction = (
-                    (1.0 - proj.failure_rate_multiplier) * 0.7
-                    + (1.0 - proj.recovery_time_multiplier) * 0.3
+                    (1.0 - proj.failure_rate_multiplier) * self.failure_weight
+                    + (1.0 - proj.recovery_time_multiplier) * self.recovery_weight
                 )
-                coverage = (
-                    len(proj.target_asset_ids) / max(1, len(proj.target_asset_ids))
-                    if proj.target_asset_ids
-                    else 0.0
-                )
+                coverage = 1.0 if proj.target_asset_ids else 0.0
                 weights[s_idx, k_idx] = risk_reduction * coverage
 
         c = np.zeros(n_vars, dtype=np.float64)
         for k in range(K):
-            capex_term = annualised_capex[k]
+            capex_term = annualised_capex[k] + self.projects[k].opex_delta_usd_per_year
             risk_term = np.sum(probs * baseline_risk * weights[:, k])
             c[k] = capex_term - risk_term
 
@@ -436,6 +455,7 @@ class InvestmentPortfolioOptimizer:
 
         annualised = float(np.sum(
             [self._amortize_capex(self.projects[i].capex_usd, self.discount_rate, self.horizon_years)
+             + self.projects[i].opex_delta_usd_per_year
              for i in range(len(self.projects)) if selected_mask[i]]
         ))
 
@@ -454,7 +474,9 @@ class InvestmentPortfolioOptimizer:
                 if selected_mask[k_idx]:
                     fr = proj.failure_rate_multiplier
                     rt = proj.recovery_time_multiplier
-                    risk_reduction_factor *= (fr * 0.7 + rt * 0.3)
+                    risk_reduction_factor *= (
+                        fr * self.failure_weight + rt * self.recovery_weight
+                    )
             residual_risk += probs[s_idx] * baseline_risk[s_idx] * risk_reduction_factor
 
         total_cost = annualised + residual_risk
