@@ -40,7 +40,7 @@ failure probability under combined ice and wind loading.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -522,6 +522,8 @@ class MakkonenIcer:
 
     def calculate_ice_failure_threshold(
         self,
+        span_length: Optional[float] = None,
+        max_tension_n: Optional[float] = None,
         gust_wind_speed_mps: float = 0.0,
     ) -> Dict[str, Any]:
         """Compute mechanical failure probability under ice + wind load.
@@ -542,6 +544,10 @@ class MakkonenIcer:
 
         Parameters
         ----------
+        span_length : float or None
+            Span length override in metres.  Defaults to instance value.
+        max_tension_n : float or None
+            Tension limit override in Newtons.  Defaults to instance value.
         gust_wind_speed_mps : float
             Concurrent gust wind speed in m/s.  Default 0.
 
@@ -562,6 +568,9 @@ class MakkonenIcer:
         if self.result_ is None:
             raise RuntimeError("Call run() before calculate_ice_failure_threshold().")
 
+        _span = span_length if span_length is not None else self.span_length_m
+        _tension_limit = max_tension_n if max_tension_n is not None else self.max_tension_n
+
         max_ice_mass = float(self.result_["ice_mass_kg_per_m"].max())
         max_thickness = float(self.result_["ice_thickness_m"].max())
         max_diameter = float(self.result_["diameter_m"].max())
@@ -578,16 +587,16 @@ class MakkonenIcer:
         else:
             resultant_force = vertical_weight
 
-        sag_m = self.span_length_m * 0.02
-        peak_tension = resultant_force * self.span_length_m**2 / (8.0 * sag_m)
+        sag_m = _span * 0.02
+        peak_tension = resultant_force * _span**2 / (8.0 * sag_m)
 
-        safety_factor = self.max_tension_n / peak_tension if peak_tension > _EPS else float("inf")
-        failed = peak_tension > self.max_tension_n
+        safety_factor = _tension_limit / peak_tension if peak_tension > _EPS else float("inf")
+        failed = peak_tension > _tension_limit
 
         return {
             "failure_probability": 1.0 if failed else 0.0,
             "max_tension_n": float(peak_tension),
-            "tension_limit_n": self.max_tension_n,
+            "tension_limit_n": _tension_limit,
             "safety_factor": float(safety_factor),
             "max_ice_thickness_m": max_thickness,
             "max_ice_mass_kg_per_m": max_ice_mass,
