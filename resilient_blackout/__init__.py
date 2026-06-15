@@ -33,23 +33,71 @@ Provides geospatial hazard-to-asset impact evaluation and financial loss
 accumulation for electrical grid infrastructure exposed to natural perils.
 """
 
+from resilient_blackout.climate.compound import CompoundHazardEngine
 from resilient_blackout.climate.downscaling import QuantileDeltaMapper
+from resilient_blackout.climate.flooding import SubstationFlooder
+from resilient_blackout.climate.ice_accretion import MakkonenIcer
+from resilient_blackout.climate.storyline import ClimateStorylineAdjuster
+from resilient_blackout.climate.wildfire import WildfireRiskEngine
 from resilient_blackout.core.base import Asset, HazardEvent, RiskScenario
 from resilient_blackout.core.degradation import ArrheniusDegradationModel, DynamicFragilityAdjuster
 from resilient_blackout.core.economics import AvoidedLossCalculator
 from resilient_blackout.core.engine import ImpactEngine
 from resilient_blackout.core.fragility import ImpactFunction, ImpactFunctionSet
+from resilient_blackout.economics.investment_planner import (
+    ClimateScenario,
+    InvestmentPortfolioOptimizer,
+    ResilienceProject,
+)
+from resilient_blackout.economics.mcda import (
+    EquityWeightedVoLLCalculator,
+    MultiCriteriaDecisionSolver,
+)
 from resilient_blackout.economics.sensitivity import GridSensitivityAnalyzer
+from resilient_blackout.economics.voll_dynamic import DynamicVoLLCalculator
+from resilient_blackout.grid.btm_optimization import (
+    OptimalStochasticScheduler,
+    OutageScenario,
+)
 from resilient_blackout.grid.cascade import CascadingSimulator
+from resilient_blackout.grid.cem_monte_carlo import CEMMonteCarloSimulator
+from resilient_blackout.grid.der_storage import OptimalIslandDispatch
+from resilient_blackout.grid.distribution_metrics import (
+    IEEEMetricCalculator,
+    MicrogridIslandEvaluator,
+)
+from resilient_blackout.grid.emissions import CarbonEmissionsTracker
 from resilient_blackout.grid.low_rank import LowRankFlowEngine
+from resilient_blackout.grid.multi_period_opf import MultiPeriodOPFScheduler
 from resilient_blackout.grid.network import GridModel
+from resilient_blackout.grid.osm_pipeline import OSMGridBuilder
 from resilient_blackout.grid.protection import (
     CascadingProtectionEngine,
     OperatorResponseModule,
     RelayModel,
 )
+from resilient_blackout.grid.crew_routing import DamagedAsset, MultiCrewRestorationRouter, RepairCrew
+from resilient_blackout.grid.restoration import CrewRestorationRouter
+from resilient_blackout.grid.sectionalizing import GridSectionalizer
+from resilient_blackout.grid.thermal_dispatch import QSTSConfig, QSTSThermalDispatcher
 from resilient_blackout.grid.thermal_line import DLRGridController, calculate_dynamic_ampacity
+from resilient_blackout.app.backends import (
+    CascadeAnimatorBackend,
+    GridBackend,
+    HazardBackend,
+    ScorecardBackend,
+    SimulationRunner,
+)
+from resilient_blackout.app.demo_data import (
+    create_demo_cascade_history,
+    create_demo_grid,
+    create_demo_hazard,
+    create_demo_load_profile,
+    create_demo_rrs_report,
+)
 from resilient_blackout.ml.surrogate import GridSurrogateNet, predict_opf_states, train_surrogate
+from resilient_blackout.ml.weather_failure import WeatherFailurePredictor
+from resilient_blackout.reporting.rrs_scorecard import RRSReportGenerator
 from resilient_blackout.utils.geo import map_hazard_to_assets
 
 __all__ = [
@@ -57,24 +105,63 @@ __all__ = [
     "Asset",
     "AvoidedLossCalculator",
     "calculate_dynamic_ampacity",
+    "CarbonEmissionsTracker",
     "CascadingProtectionEngine",
     "CascadingSimulator",
+    "CascadeAnimatorBackend",
+    "GridBackend",
+    "HazardBackend",
+    "ScorecardBackend",
+    "SimulationRunner",
+    "create_demo_cascade_history",
+    "create_demo_grid",
+    "create_demo_hazard",
+    "create_demo_load_profile",
+    "create_demo_rrs_report",
+    "CEMMonteCarloSimulator",
+    "ClimateScenario",
+    "ClimateStorylineAdjuster",
+    "CompoundHazardEngine",
+    "CrewRestorationRouter",
+    "DamagedAsset",
     "DLRGridController",
     "DynamicFragilityAdjuster",
+    "DynamicVoLLCalculator",
+    "EquityWeightedVoLLCalculator",
     "GridModel",
+    "GridSectionalizer",
+    "OSMGridBuilder",
     "GridSensitivityAnalyzer",
     "GridSurrogateNet",
+    "IEEEMetricCalculator",
     "HazardEvent",
     "ImpactEngine",
     "ImpactFunction",
     "ImpactFunctionSet",
+    "InvestmentPortfolioOptimizer",
     "LowRankFlowEngine",
+    "MakkonenIcer",
+    "MultiCriteriaDecisionSolver",
+    "MultiPeriodOPFScheduler",
+    "MicrogridIslandEvaluator",
+    "MultiCrewRestorationRouter",
     "OperatorResponseModule",
+    "OptimalIslandDispatch",
+    "OptimalStochasticScheduler",
+    "OutageScenario",
+    "QSTSConfig",
+    "QSTSThermalDispatcher",
     "predict_opf_states",
     "QuantileDeltaMapper",
     "RelayModel",
+    "ResilienceProject",
     "RiskScenario",
+    "RRSReportGenerator",
+    "RepairCrew",
+    "SubstationFlooder",
     "train_surrogate",
+    "WeatherFailurePredictor",
+    "WildfireRiskEngine",
     "map_hazard_to_assets",
 ]
 __version__ = "0.1.0"

@@ -31,15 +31,12 @@
 from __future__ import annotations
 
 import json
+import tempfile
+from pathlib import Path
 
-import numpy as np
-import pandas as pd
 import pytest
 
-from resilient_blackout.reporting.rrs_scorecard import (
-    RRSScorecard,
-    RRSScorecardGenerator,
-)
+from resilient_blackout.reporting.rrs_scorecard import RRSReportGenerator
 
 
 # ---------------------------------------------------------------------------
@@ -57,15 +54,13 @@ def strong_avoided_loss() -> dict:
         "annual_benefit": 500_000.0,
         "pv_benefits": 6_000_000.0,
         "pv_costs": 2_400_000.0,
-        "avoided_loss_detail": {
-            "baseline_eens_mwh": 2000.0,
-            "resilient_eens_mwh": 500.0,
-            "baseline_risk_usd": 20_000_000.0,
-            "resilient_risk_usd": 5_000_000.0,
-            "avoided_loss_usd": 15_000_000.0,
-            "avoided_eens_mwh": 1500.0,
-            "voll_used": 10000.0,
-        },
+        "avoided_loss_usd": 15_000_000.0,
+        "avoided_eens_mwh": 1500.0,
+        "baseline_eens_mwh": 2000.0,
+        "resilient_eens_mwh": 500.0,
+        "baseline_risk_usd": 20_000_000.0,
+        "resilient_risk_usd": 5_000_000.0,
+        "voll_used": 10000.0,
     }
 
 
@@ -79,15 +74,13 @@ def weak_avoided_loss() -> dict:
         "annual_benefit": 10_000.0,
         "pv_benefits": 200_000.0,
         "pv_costs": 180_000.0,
-        "avoided_loss_detail": {
-            "baseline_eens_mwh": 200.0,
-            "resilient_eens_mwh": 150.0,
-            "baseline_risk_usd": 2_000_000.0,
-            "resilient_risk_usd": 1_500_000.0,
-            "avoided_loss_usd": 500_000.0,
-            "avoided_eens_mwh": 50.0,
-            "voll_used": 10000.0,
-        },
+        "avoided_loss_usd": 500_000.0,
+        "avoided_eens_mwh": 50.0,
+        "baseline_eens_mwh": 200.0,
+        "resilient_eens_mwh": 150.0,
+        "baseline_risk_usd": 2_000_000.0,
+        "resilient_risk_usd": 1_500_000.0,
+        "voll_used": 10000.0,
     }
 
 
@@ -95,18 +88,24 @@ def weak_avoided_loss() -> dict:
 def sensitivity_result() -> dict:
     """Sobol sensitivity analysis output."""
     return {
-        "S1": np.array([0.45, 0.15, 0.05]),
-        "ST": np.array([0.60, 0.25, 0.10]),
-        "S1_conf": np.array([0.02, 0.02, 0.01]),
-        "ST_conf": np.array([0.03, 0.02, 0.01]),
-        "param_names": ["failure_rate", "restoration_time", "voll"],
-        "summary": pd.DataFrame({
-            "parameter": ["failure_rate", "restoration_time", "voll"],
+        "method": "sobol",
+        "indices": {
             "S1": [0.45, 0.15, 0.05],
             "ST": [0.60, 0.25, 0.10],
             "S1_conf": [0.02, 0.02, 0.01],
             "ST_conf": [0.03, 0.02, 0.01],
-        }).sort_values("ST", ascending=False).reset_index(drop=True),
+            "param_names": ["failure_rate", "restoration_time", "voll"],
+        },
+    }
+
+
+@pytest.fixture
+def community_data() -> dict:
+    """Community-level data for through-project assessment."""
+    return {
+        "n_customers": 50000,
+        "supply_chain_value_per_mwh": 5000.0,
+        "renewable_mwh": 500.0,
     }
 
 
@@ -118,34 +117,28 @@ def sensitivity_result() -> dict:
 class TestInit:
     """Validation of constructor and parameter handling."""
 
-    def test_default_construction(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test Project", strong_avoided_loss)
+    def test_default_construction(self) -> None:
+        gen = RRSReportGenerator("Test Project")
         assert gen.project_name == "Test Project"
-        assert gen.cmi_per_mwh == 60.0
-        assert "moderate" in gen.climate_stress_scenarios
-        assert "extreme" in gen.climate_stress_scenarios
+        assert gen.planning_horizon == 20
+        assert gen.discount_rate == 0.05
+        assert len(gen.climate_scenarios) == 2
+        assert gen.climate_scenarios[0]["name"] == "RCP 4.5"
 
-    def test_custom_cmi(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss, cmi_per_mwh=45.0)
-        assert gen.cmi_per_mwh == 45.0
+    def test_custom_params(self) -> None:
+        gen = RRSReportGenerator("Test", planning_horizon=30, discount_rate=0.07)
+        assert gen.planning_horizon == 30
+        assert gen.discount_rate == 0.07
 
-    def test_invalid_cmi_raises(self, strong_avoided_loss: dict) -> None:
-        with pytest.raises(ValueError, match="cmi_per_mwh"):
-            RRSScorecardGenerator("Test", strong_avoided_loss, cmi_per_mwh=-1.0)
+    def test_custom_scenarios(self) -> None:
+        scenarios = [{"name": "Custom", "temp_increase_c": 1.5, "sea_level_rise_m": 0.2, "heatwave_freq_multiplier": 1.2}]
+        gen = RRSReportGenerator("Test", climate_scenarios=scenarios)
+        assert len(gen.climate_scenarios) == 1
+        assert gen.climate_scenarios[0]["name"] == "Custom"
 
-    def test_custom_scenarios(self, strong_avoided_loss: dict) -> None:
-        scenarios = {"mild": {"npv_multiplier": 0.9, "load_multiplier": 1.05}}
-        gen = RRSScorecardGenerator(
-            "Test", strong_avoided_loss, climate_stress_scenarios=scenarios
-        )
-        assert "mild" in gen.climate_stress_scenarios
-        assert "extreme" not in gen.climate_stress_scenarios
-
-    def test_repr(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        r = repr(gen)
-        assert "RRSScorecardGenerator" in r
-        assert "Test" in r
+    def test_report_initially_none(self) -> None:
+        gen = RRSReportGenerator("Test")
+        assert gen.report is None
 
 
 # ---------------------------------------------------------------------------
@@ -157,43 +150,34 @@ class TestResilienceOfProject:
     """Validation of resilience-of-project assessment."""
 
     def test_strong_project_gets_high_grade(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Strong", strong_avoided_loss)
-        result = gen.assess_resilience_of_the_project()
-        assert result["confidence_grade"] in ("A+", "A", "A-")
-        assert result["irr_stable"] is True
-        assert result["bcr_stable"] is True
+        gen = RRSReportGenerator("Strong")
+        result = gen.assess_resilience_of_the_project(strong_avoided_loss)
+        assert result["grade"] in ("AAA", "AA", "A")
+        assert result["npv"] == 5_000_000.0
+        assert result["psi"] >= 0.0
 
-    def test_weak_project_gets_low_grade(self, weak_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Weak", weak_avoided_loss)
-        result = gen.assess_resilience_of_the_project()
-        assert result["confidence_grade"] in ("B", "B-", "C")
-        assert result["npv_degradation_pct"] > 0
+    def test_weak_project_gets_lower_grade(self, weak_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Weak")
+        result = gen.assess_resilience_of_the_project(weak_avoided_loss)
+        assert result["grade"] in ("BBB", "BB", "B", "C")
 
-    def test_includes_key_sensitivities(
-        self, strong_avoided_loss: dict, sensitivity_result: dict
-    ) -> None:
-        gen = RRSScorecardGenerator(
-            "Test", strong_avoided_loss, sensitivity_result=sensitivity_result
+    def test_with_sensitivity(self, strong_avoided_loss: dict, sensitivity_result: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        result = gen.assess_resilience_of_the_project(
+            strong_avoided_loss, sensitivity_result
         )
-        result = gen.assess_resilience_of_the_project()
-        assert len(result["key_sensitivities"]) > 0
-        assert "failure_rate" in result["key_sensitivities"]
+        assert "grade" in result
+        assert "npv_cv" in result
 
-    def test_no_sensitivity_fallback(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_of_the_project()
-        assert result["key_sensitivities"] == ["insufficient_data"]
+    def test_without_sensitivity(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        result = gen.assess_resilience_of_the_project(strong_avoided_loss)
+        assert result["npv_cv"] == 0.15
 
-    def test_rationale_is_string(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_of_the_project()
-        assert isinstance(result["assessment_rationale"], str)
-        assert len(result["assessment_rationale"]) > 0
-
-    def test_stressed_npv_lower_than_baseline(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_of_the_project()
-        assert result["stressed_npv"] < result["baseline_npv"]
+    def test_psi_range(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        result = gen.assess_resilience_of_the_project(strong_avoided_loss)
+        assert 0.0 <= result["psi"] <= 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -204,77 +188,93 @@ class TestResilienceOfProject:
 class TestResilienceThroughProject:
     """Validation of resilience-through-project assessment."""
 
-    def test_strong_project_high_adaptation_score(
-        self, strong_avoided_loss: dict
+    def test_with_community_data(
+        self, strong_avoided_loss: dict, community_data: dict
     ) -> None:
-        gen = RRSScorecardGenerator("Strong", strong_avoided_loss)
-        result = gen.assess_resilience_through_the_project()
-        assert result["adaptation_score"] >= 5
-        assert result["cmi_reduction_minutes"] > 0
-
-    def test_weak_project_low_adaptation_score(
-        self, weak_avoided_loss: dict
-    ) -> None:
-        gen = RRSScorecardGenerator("Weak", weak_avoided_loss)
-        result = gen.assess_resilience_through_the_project()
-        assert result["adaptation_score"] <= 5
-
-    def test_cmi_computation(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss, cmi_per_mwh=60.0)
-        result = gen.assess_resilience_through_the_project()
-        expected_cmi = 1500.0 * 60.0
-        assert result["cmi_reduction_minutes"] == pytest.approx(expected_cmi, rel=1e-6)
-
-    def test_emissions_offset(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_through_the_project()
-        assert result["emissions_offset_tonne_co2"] > 0
-
-    def test_community_benefit_ratio(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_through_the_project()
-        assert 0.0 < result["community_benefit_ratio"] <= 1.0
-
-    def test_rationale_is_string(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        result = gen.assess_resilience_through_the_project()
-        assert isinstance(result["assessment_rationale"], str)
-        assert len(result["assessment_rationale"]) > 0
-
-
-# ---------------------------------------------------------------------------
-# Full scorecard
-# ---------------------------------------------------------------------------
-
-
-class TestGenerateScorecard:
-    """Validation of full scorecard generation."""
-
-    def test_generates_scorecard(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        sc = gen.generate_scorecard()
-        assert isinstance(sc, RRSScorecard)
-        assert sc.project_name == "Test"
-        assert sc.rrs_version == "1.0.0"
-        assert sc.resilience_of.confidence_grade in (
-            "A+", "A", "A-", "B+", "B", "B-", "C"
+        gen = RRSReportGenerator("Test")
+        result = gen.assess_resilience_through_the_project(
+            strong_avoided_loss, community_data
         )
-        assert 1 <= sc.resilience_through.adaptation_score <= 10
+        assert result["cmi_reduction_minutes"] > 0
+        assert result["community_impact_score"] > 0
+        assert result["avoided_supply_chain_loss_usd"] > 0
+        assert result["emissions_offset_tco2"] > 0
 
-    def test_esrs_mapping(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        sc = gen.generate_scorecard()
-        assert "confidence_grade" in sc.esrs_mapping
-        assert "adaptation_score" in sc.esrs_mapping
-        assert "cmi_reduction" in sc.esrs_mapping
-        assert "emissions_offset" in sc.esrs_mapping
-        assert "ESRS" in sc.esrs_mapping["confidence_grade"]
+    def test_without_community_data(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        result = gen.assess_resilience_through_the_project(strong_avoided_loss)
+        assert result["cmi_reduction_minutes"] >= 0
+        assert result["community_impact_score"] >= 0
 
-    def test_metadata(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        sc = gen.generate_scorecard()
-        assert sc.metadata["framework"] == "World Bank Resilience Rating System"
-        assert "climate_scenarios" in sc.metadata
+    def test_weak_project_lower_scores(self, weak_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        result_strong = gen.assess_resilience_through_the_project(
+            {"avoided_eens_mwh": 1500.0}
+        )
+        result_weak = gen.assess_resilience_through_the_project(
+            {"avoided_eens_mwh": 50.0}
+        )
+        assert result_strong["cmi_reduction_minutes"] > result_weak["cmi_reduction_minutes"]
+
+
+# ---------------------------------------------------------------------------
+# Full report generation
+# ---------------------------------------------------------------------------
+
+
+class TestGenerateReport:
+    """Validation of full report generation."""
+
+    def test_generates_report(
+        self, strong_avoided_loss: dict, sensitivity_result: dict, community_data: dict
+    ) -> None:
+        gen = RRSReportGenerator("Test")
+        report = gen.generate_report(
+            strong_avoided_loss, sensitivity_result, community_data
+        )
+        assert "report_metadata" in report
+        assert "key_performance_indicators" in report
+        assert "resilience_of_the_project" in report
+        assert "resilience_through_the_project" in report
+        assert "regulatory_alignment" in report
+        assert "sensitivity_analysis" in report
+        assert report["report_metadata"]["project_name"] == "Test"
+
+    def test_report_stored(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        gen.generate_report(strong_avoided_loss)
+        assert gen.report is not None
+
+    def test_kpis_present(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        report = gen.generate_report(strong_avoided_loss)
+        kpis = report["key_performance_indicators"]
+        assert kpis["npv_usd"] == 5_000_000.0
+        assert kpis["bcr"] == 2.5
+        assert kpis["avoided_eens_mwh"] == 1500.0
+
+    def test_regulatory_alignment(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        report = gen.generate_report(strong_avoided_loss)
+        reg = report["regulatory_alignment"]
+        assert "eu_taxonomy" in reg
+        assert "tcfd" in reg
+        assert "issb_s2" in reg
+        assert "gri" in reg
+
+    def test_sensitivity_summary(
+        self, strong_avoided_loss: dict, sensitivity_result: dict
+    ) -> None:
+        gen = RRSReportGenerator("Test")
+        report = gen.generate_report(strong_avoided_loss, sensitivity_result)
+        assert report["sensitivity_analysis"] is not None
+        assert report["sensitivity_analysis"]["method"] == "sobol"
+        assert len(report["sensitivity_analysis"]["top_parameters"]) > 0
+
+    def test_no_sensitivity(self, strong_avoided_loss: dict) -> None:
+        gen = RRSReportGenerator("Test")
+        report = gen.generate_report(strong_avoided_loss)
+        assert report["sensitivity_analysis"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -283,66 +283,49 @@ class TestGenerateScorecard:
 
 
 class TestJSONExport:
-    """Validation of JSON serialization."""
+    """Validation of JSON export."""
 
-    def test_to_json_valid(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        json_str = gen.to_json()
-        parsed = json.loads(json_str)
-        assert "rrs_scorecard" in parsed
-        assert parsed["rrs_scorecard"]["project_name"] == "Test"
-
-    def test_json_contains_both_dimensions(
-        self, strong_avoided_loss: dict
+    def test_export_json(
+        self, strong_avoided_loss: dict, sensitivity_result: dict, community_data: dict
     ) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        json_str = gen.to_json()
-        parsed = json.loads(json_str)
-        sc = parsed["rrs_scorecard"]
-        assert "resilience_of_the_project" in sc
-        assert "resilience_through_the_project" in sc
-        assert "esrs_mapping" in sc
+        gen = RRSReportGenerator("Test")
+        gen.generate_report(strong_avoided_loss, sensitivity_result, community_data)
 
-    def test_json_roundtrip(self, strong_avoided_loss: dict) -> None:
-        gen = RRSScorecardGenerator("Test", strong_avoided_loss)
-        json_str = gen.to_json()
-        parsed = json.loads(json_str)
-        sc = parsed["rrs_scorecard"]
-        assert sc["resilience_of_the_project"]["confidence_grade"] is not None
-        assert sc["resilience_through_the_project"]["adaptation_score"] is not None
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
+            tmp_path = f.name
+
+        try:
+            gen.export_json(tmp_path)
+            with open(tmp_path) as f:
+                data = json.load(f)
+            assert data["report_metadata"]["project_name"] == "Test"
+            assert "resilience_of_the_project" in data
+        finally:
+            Path(tmp_path).unlink()
+
+    def test_export_without_report_raises(self) -> None:
+        gen = RRSReportGenerator("Test")
+        with pytest.raises(RuntimeError, match="No report generated"):
+            gen.export_json("/tmp/test.json")
 
 
 # ---------------------------------------------------------------------------
-# Confidence grade edge cases
+# Grade assignment
 # ---------------------------------------------------------------------------
 
 
-class TestConfidenceGrade:
-    """Validation of confidence grade computation."""
+class TestGradeAssignment:
+    """Validation of grade assignment logic."""
 
     def test_all_grades_reachable(self) -> None:
         grades = set()
-        for deg in [5, 15, 25, 35, 45, 55, 65]:
-            grade, _ = RRSScorecardGenerator._compute_confidence_grade(
-                deg, irr_stable=True, bcr_stable=True
-            )
+        for cv in [0.05, 0.15, 0.25, 0.40, 0.60, 0.80, 1.0]:
+            grade = RRSReportGenerator._assign_grade(cv)
             grades.add(grade)
         assert len(grades) >= 5
 
-    def test_unstable_irr_downgrades(self) -> None:
-        grade_stable, _ = RRSScorecardGenerator._compute_confidence_grade(
-            15.0, irr_stable=True, bcr_stable=True
-        )
-        grade_unstable, _ = RRSScorecardGenerator._compute_confidence_grade(
-            15.0, irr_stable=False, bcr_stable=True
-        )
-        assert grade_stable != grade_unstable
+    def test_low_cv_gets_aaa(self) -> None:
+        assert RRSReportGenerator._assign_grade(0.05) == "AAA"
 
-    def test_unstable_bcr_downgrades(self) -> None:
-        grade_stable, _ = RRSScorecardGenerator._compute_confidence_grade(
-            25.0, irr_stable=True, bcr_stable=True
-        )
-        grade_unstable, _ = RRSScorecardGenerator._compute_confidence_grade(
-            25.0, irr_stable=True, bcr_stable=False
-        )
-        assert grade_stable != grade_unstable
+    def test_high_cv_gets_c(self) -> None:
+        assert RRSReportGenerator._assign_grade(1.5) == "C"

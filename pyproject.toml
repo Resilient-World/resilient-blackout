@@ -32,6 +32,7 @@ dependencies = [
     "numpy>=1.26",
     "pandas>=2.1",
     "scipy>=1.11",
+    "scikit-learn>=1.3",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +47,12 @@ ml = [
 ]
 sensitivity = [
     "salib>=1.4",
+]
+app = [
+    "streamlit>=1.28",
+    "plotly>=5.18",
+    "folium>=0.15",
+    "streamlit-folium>=0.18",
 ]
 
 [tool.setuptools.packages.find]
@@ -62,3 +69,12 @@ select = ["E", "F", "I", "N", "W", "UP"]
 python_version = "3.10"
 strict = true
 warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "pandapower: marks tests requiring pandapower",
+]

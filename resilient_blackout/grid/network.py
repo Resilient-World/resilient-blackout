@@ -147,10 +147,8 @@ class GridModel:
     def from_openstreetmap_data(cls, filepath: Union[str, Path]) -> GridModel:
         """Parse an open transmission model (alias for :meth:`from_file`).
 
-        This is a convenience alias for ``from_file``.  In future
-        releases it may include OpenStreetMap-specific extraction logic
-        (e.g., querying the Overpass API for substation and line
-        geometries).
+        This is a convenience alias for ``from_file``.  For live
+        OpenStreetMap extraction see :meth:`from_osm_bbox`.
 
         Parameters
         ----------
@@ -162,6 +160,41 @@ class GridModel:
         GridModel
         """
         return cls.from_file(filepath)
+
+    @classmethod
+    def from_osm_bbox(
+        cls,
+        bbox: Tuple[float, float, float, float],
+        snap_threshold_m: float = 50.0,
+        default_voltage_kv: float = 12.47,
+    ) -> GridModel:
+        """Build a grid model from an OpenStreetMap bounding box.
+
+        Queries the Overpass API, reconstructs topology, and runs
+        progressive AC power flow validation.
+
+        Parameters
+        ----------
+        bbox : tuple of float
+            ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84.
+        snap_threshold_m : float
+            Spatial snapping threshold for line endpoints.  Default 50.
+        default_voltage_kv : float
+            Fallback voltage when OSM tags are absent.  Default 12.47.
+
+        Returns
+        -------
+        GridModel
+        """
+        from resilient_blackout.grid.osm_pipeline import OSMGridBuilder
+
+        builder = OSMGridBuilder(
+            snap_threshold_m=snap_threshold_m,
+            default_voltage_kv=default_voltage_kv,
+        )
+        net, _result = builder.build_from_bbox(bbox)
+        mapping = cls._build_bus_mapping(net)
+        return cls(net, mapping)
 
     @staticmethod
     def _build_bus_mapping(net: pandapowerNet) -> Dict[str, _BusMappingEntry]:
